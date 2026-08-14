@@ -6,9 +6,9 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 
-from dd_hdg_training2 import DD_HDG_Trainer
+from dd_hdg_training6 import DD_HDG_Trainer
 from dd_hdg_face_operations import extract_neighbours_indexes
-from dd_hdg_SVD2 import reconstruct_from_rom, project_to_rom
+from dd_hdg_SVD import reconstruct_from_rom, project_to_rom
 
 # =========================================================================
 # DEVICE SETUP & CONFIGURATION
@@ -20,12 +20,12 @@ print(f"Using {device} device")
 
 torch.cuda.manual_seed(42)
 
-csv_internal_test_path = 'dataset_operator_internal_test_cornerflux.csv'
-csv_boundary_test_path = 'dataset_operator_boundary_test_cornerflux.csv'
+csv_internal_test_path = 'Bases/dataset_operator_internal_test.csv'
+csv_boundary_test_path = 'Bases/dataset_operator_boundary_test.csv'
 
-csv_internal_train_path = 'dataset_operator_internal_train_cornerflux.csv'
-csv_boundary_train_path = 'dataset_operator_boundary_train_cornerflux.csv'
-npz_rom_path = 'hdg_rom_bases_cornerflux.npz'
+csv_internal_train_path = 'Bases/dataset_operator_internal_train.csv'
+csv_boundary_train_path = 'Bases/dataset_operator_boundary_train.csv'
+npz_rom_path = 'Bases/hdg_rom_bases.npz'
 models_dir = 'trained_operators'
 use_single_stage = True  # If False, uses a two-stage optimization approach
 use_non_true_bnd = False
@@ -38,7 +38,7 @@ n_subx, n_suby = 8, 8
 # HELPER FUNCTIONS
 # =========================================================================
 def load_model(model_name: str, input_dim: int, output_dim: int, hidden_dims=(64, 128, 64, 32)) -> nn.Module:
-    """Load a DD_HDG_Trainer model exactly as defined in dd_hdg_training2.py."""
+    """Load a DD_HDG_Trainer model exactly as defined in dd_hdg_training6.py."""
     model_path = os.path.join(models_dir, f"{model_name}_model.pth")
     model = DD_HDG_Trainer(input_dim=input_dim, output_dim=output_dim, hidden_dims=hidden_dims)
     state_dict = torch.load(model_path, map_location=device)
@@ -229,18 +229,18 @@ latent_corner_dim = 1
 in_dim = 6 + (4 * latent_face_dim) + (4 * latent_corner_dim) + x_bnd.shape[1] # 30
 
 # Load Solution Models
-S_int = load_model("solution_internal_cornerflux", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=(128, 64))
-S_bnd = load_model("solution_boundary_cornerflux", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=(128, 64))
+S_int = load_model("solution_internal6", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=(128, 64))
+S_bnd = load_model("solution_boundary6", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=(128, 64))
 
 # Load Unified Flux Models (Single model per direction across all subdomains)
-J_left   = load_model("flux_internal_cornerflux_left", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=(128,64))
-J_right  = load_model("flux_internal_cornerflux_right", input_dim=in_dim, output_dim=y_J_right.shape[1], hidden_dims=(128, 64))
-J_top    = load_model("flux_internal_cornerflux_top", input_dim=in_dim, output_dim=y_J_top.shape[1], hidden_dims=(128, 64))
-J_bottom = load_model("flux_internal_cornerflux_bottom", input_dim=in_dim, output_dim=y_J_bottom.shape[1], hidden_dims=(128, 64))
+J_left   = load_model("flux_internal6_left", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=(128,64))
+J_right  = load_model("flux_internal6_right", input_dim=in_dim, output_dim=y_J_right.shape[1], hidden_dims=(128, 64))
+J_top    = load_model("flux_internal6_top", input_dim=in_dim, output_dim=y_J_top.shape[1], hidden_dims=(128, 64))
+J_bottom = load_model("flux_internal6_bottom", input_dim=in_dim, output_dim=y_J_bottom.shape[1], hidden_dims=(128, 64))
 
 # Load Solution Scalers
-x_scaler_int, y_scaler_S_int = load_scalers("solution_internal_cornerflux")
-x_scaler_bnd, y_scaler_S_bnd = load_scalers("solution_boundary_cornerflux")
+x_scaler_int, y_scaler_S_int = load_scalers("solution_internal6")
+x_scaler_bnd, y_scaler_S_bnd = load_scalers("solution_boundary6")
 
 x_mean_int  = torch.tensor(x_scaler_int.mean_, dtype=torch.float32, device=device)
 x_scale_int = torch.tensor(x_scaler_int.scale_, dtype=torch.float32, device=device)
@@ -250,7 +250,7 @@ x_scale_bnd = torch.tensor(x_scaler_bnd.scale_, dtype=torch.float32, device=devi
 # Load Input/Output Scalers for Flux Networks
 scalers_dict_flux = {}
 for direction in ['left', 'right', 'top', 'bottom']:
-    x_sc, y_sc = load_scalers(f"flux_internal_cornerflux_{direction}")
+    x_sc, y_sc = load_scalers(f"flux_internal6_{direction}")
     scalers_dict_flux[direction] = {
         'x_scale': torch.tensor(x_sc.scale_, dtype=torch.float32, device=device),
         'x_mean':  torch.tensor(x_sc.mean_, dtype=torch.float32, device=device),
@@ -783,3 +783,4 @@ plt.colorbar(im3, ax=axes[1, 1])
 
 plt.tight_layout()
 plt.show()
+plt.savefig(f"comparison_plots_sample_{sample_idx}.pdf", dpi=300)

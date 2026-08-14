@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from dd_hdg_SVD2 import reconstruct_from_rom
+from dd_hdg_SVD import reconstruct_from_rom
 
 # Device Configuration
 device = (
@@ -120,9 +120,9 @@ def load_dataset_split(operator: str, domain_type: str = None, flux_direction: s
         if domain_type not in ['internal', 'boundary']:
             raise ValueError("domain_type must be 'internal' or 'boundary' for solution operator")
 
-        train_file = f"dataset_operator_{domain_type}_train_cornerflux.csv"
-        val_file = f"dataset_operator_{domain_type}_val_cornerflux.csv"
-        test_file = f"dataset_operator_{domain_type}_test_cornerflux.csv"
+        train_file = f"dataset_operator_{domain_type}_train.csv"
+        val_file = f"dataset_operator_{domain_type}_val.csv"
+        test_file = f"dataset_operator_{domain_type}_test.csv"
 
         for f in [train_file, val_file, test_file]:
             if not os.path.exists(f):
@@ -137,16 +137,16 @@ def load_dataset_split(operator: str, domain_type: str = None, flux_direction: s
             raise ValueError("flux_direction must be provided for flux operators")
 
         # Load both internal and boundary dataset split CSV files
-        df_train_int = harmonize_df(pd.read_csv("dataset_operator_internal_train_cornerflux.csv"))
-        df_train_bnd = harmonize_df(pd.read_csv("dataset_operator_boundary_train_cornerflux.csv"))
+        df_train_int = harmonize_df(pd.read_csv("Bases/dataset_operator_internal_train.csv"))
+        df_train_bnd = harmonize_df(pd.read_csv("Bases/dataset_operator_boundary_train.csv"))
         df_train = pd.concat([df_train_int, df_train_bnd], ignore_index=True)
 
-        df_val_int = harmonize_df(pd.read_csv("dataset_operator_internal_val_cornerflux.csv"))
-        df_val_bnd = harmonize_df(pd.read_csv("dataset_operator_boundary_val_cornerflux.csv"))
+        df_val_int = harmonize_df(pd.read_csv("Bases/dataset_operator_internal_val.csv"))
+        df_val_bnd = harmonize_df(pd.read_csv("Bases/dataset_operator_boundary_val.csv"))
         df_val = pd.concat([df_val_int, df_val_bnd], ignore_index=True)
 
-        df_test_int = harmonize_df(pd.read_csv("dataset_operator_internal_test_cornerflux.csv"))
-        df_test_bnd = harmonize_df(pd.read_csv("dataset_operator_boundary_test_cornerflux.csv"))
+        df_test_int = harmonize_df(pd.read_csv("Bases/dataset_operator_internal_test.csv"))
+        df_test_bnd = harmonize_df(pd.read_csv("Bases/dataset_operator_boundary_test.csv"))
         df_test = pd.concat([df_test_int, df_test_bnd], ignore_index=True)
 
         # Filter to extract only entries where flux face is non-boundary (is_u_face_bnd == 0)
@@ -228,9 +228,9 @@ def train_single_operator(operator: str, domain_type: str = None, flux_direction
                           batch_size=64, lr=1e-2, hidden_dims=(64, 128, 64, 32), num_epochs=NUM_EPOCHS):
     """Train a single NN operator model, save artifacts, and evaluate reconstruction error."""
     if operator == 'solution':
-        model_name = f"solution_{domain_type}_cornerflux"
+        model_name = f"solution_{domain_type}6"
     else:
-        model_name = f"flux_internal_cornerflux_{flux_direction}"
+        model_name = f"flux_internal6_{flux_direction}"
 
     print("\n" + "=" * 80)
     print(f"TRAINING OPERATOR: {model_name.upper()}")
@@ -286,7 +286,7 @@ def train_single_operator(operator: str, domain_type: str = None, flux_direction
     y_true = y_scaler.inverse_transform(y_true_norm)
 
     # Load POD Basis for physical field reconstruction
-    npz_basis_path = "hdg_rom_bases_cornerflux.npz"
+    npz_basis_path = "Bases/hdg_rom_bases.npz"
     if os.path.exists(npz_basis_path):
         rom_data = np.load(npz_basis_path)
         if operator == 'solution':
@@ -364,6 +364,63 @@ def main():
     print("=" * 80)
     df_res = pd.DataFrame(results)
     print(df_res.to_string(index=False))
+    # ==========================================
+    # 📊 Create & Save Bar Chart (Balkendiagramm)
+    # ==========================================
+
+    # 1. Ensure the 'Plots' directory exists
+    plot_dir = "Plots"
+    os.makedirs(plot_dir, exist_ok=True)
+
+    # 2. Setup figure with 2 subplots (Test MSE & Relative Error)
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    # Subplot 1: Test MSE
+    bars1 = axes[0].bar(df_res["model"], df_res["test_mse"], color="steelblue", edgecolor="black")
+    axes[0].set_title("Test MSE by Operator", fontsize=13, fontweight="bold")
+    axes[0].set_ylabel("MSE Loss")
+    axes[0].set_xticklabels(df_res["model"], rotation=30, ha="right")
+    axes[0].grid(axis="y", linestyle="--", alpha=0.7)
+
+    # Add value labels on top of bars
+    for bar in bars1:
+        yval = bar.get_height()
+        axes[0].text(
+            bar.get_x() + bar.get_width() / 2,
+            yval,
+            f"{yval:.2e}",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+        )
+
+    # Subplot 2: Relative Error
+    bars2 = axes[1].bar(df_res["model"], df_res["rel_error"], color="coral", edgecolor="black")
+    axes[1].set_title("Relative Error by Operator", fontsize=13, fontweight="bold")
+    axes[1].set_ylabel("Relative Error")
+    axes[1].set_xticklabels(df_res["model"], rotation=30, ha="right")
+    axes[1].grid(axis="y", linestyle="--", alpha=0.7)
+
+    # Add value labels on top of bars
+    for bar in bars2:
+        yval = bar.get_height()
+        axes[1].text(
+            bar.get_x() + bar.get_width() / 2,
+            yval,
+            f"{yval:.2e}" if yval < 0.01 else f"{yval:.4f}",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+        )
+
+    plt.tight_layout()
+
+    # 3. Save plot into Plots/
+    save_path = os.path.join(plot_dir, "operator_training6_summary.pdf")
+    plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.close()
+
+    print(f"\n[INFO] Bar chart successfully saved to: {save_path}")
 
 
 if __name__ == "__main__":

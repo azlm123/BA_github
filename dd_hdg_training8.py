@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from dd_hdg_SVD2 import reconstruct_from_rom
+from dd_hdg_SVD import reconstruct_from_rom
 
 # Device Configuration
 device = (
@@ -114,9 +114,9 @@ def extract_features_and_targets(df: pd.DataFrame, operator: str, flux_direction
 
 def load_dataset_split(domain_type: str, operator: str, flux_direction: str = None):
     """Load pre-split CSV files for train, val, and test datasets."""
-    train_file = f"dataset_operator_{domain_type}_train_tryout.csv"
-    val_file = f"dataset_operator_{domain_type}_val_tryout.csv"
-    test_file = f"dataset_operator_{domain_type}_test_tryout.csv"
+    train_file = f"dataset_operator_{domain_type}_train.csv"
+    val_file = f"dataset_operator_{domain_type}_val.csv"
+    test_file = f"dataset_operator_{domain_type}_test.csv"
 
     for f in [train_file, val_file, test_file]:
         if not os.path.exists(f):
@@ -193,7 +193,7 @@ def validation_loop(dataloader, model, loss_fn):
 def train_single_operator(domain_type: str, operator: str, flux_direction: str = None, 
                           batch_size=64, lr=1e-2, hidden_dims=(64, 128, 64, 32)):
     """Train a single NN operator model, save artifacts, and evaluate reconstruction error."""
-    model_name = f"{operator}_{domain_type}_tryout" + (f"_{flux_direction}" if flux_direction else "")
+    model_name = f"{operator}_{domain_type}8" + (f"_{flux_direction}" if flux_direction else "")
     print("\n" + "=" * 80)
     print(f"TRAINING OPERATOR: {model_name.upper()}")
     print("=" * 80)
@@ -248,15 +248,15 @@ def train_single_operator(domain_type: str, operator: str, flux_direction: str =
     y_true = y_scaler.inverse_transform(y_true_norm)
 
     # Load DOMAIN-SPECIFIC POD Basis for physical field reconstruction
-    npz_basis_path ="hdg_rom_bases_tryout.npz"
+    npz_basis_path ="hdg_rom_bases.npz"
     if os.path.exists(npz_basis_path):
         rom_data = np.load(npz_basis_path)
         if operator == 'solution':
-            basis = rom_data[f"U_sub_{'int' if domain_type=='int' else 'bnd'}_basis"]
-            mean = rom_data[f"U_sub_{'int' if domain_type=='int' else 'bnd'}_mean"]
+            basis = rom_data[f"U_sub_{'int' if domain_type=='internal' else 'bnd'}_basis"]
+            mean = rom_data[f"U_sub_{'int' if domain_type=='internal' else 'bnd'}_mean"]
         else:
-            basis = rom_data[f"J_face_{'int' if domain_type=='int' else 'bnd'}_basis"]
-            mean = rom_data[f"J_face_{'int' if domain_type=='int' else 'bnd'}_mean"]
+            basis = rom_data[f"J_face_{'int' if domain_type=='internal' else 'bnd'}_basis"]
+            mean = rom_data[f"J_face_{'int' if domain_type=='internal' else 'bnd'}_mean"]
 
         y_pred_rec = reconstruct_from_rom(y_pred, basis, mean)
         y_true_rec = reconstruct_from_rom(y_true, basis, mean)
@@ -316,6 +316,63 @@ def main():
     print("=" * 80)
     df_res = pd.DataFrame(results)
     print(df_res.to_string(index=False))
+    # ==========================================
+    # 📊 Create & Save Bar Chart (Balkendiagramm)
+    # ==========================================
+
+    # 1. Ensure the 'Plots' directory exists
+    plot_dir = "Plots"
+    os.makedirs(plot_dir, exist_ok=True)
+
+    # 2. Setup figure with 2 subplots (Test MSE & Relative Error)
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    # Subplot 1: Test MSE
+    bars1 = axes[0].bar(df_res["model"], df_res["test_mse"], color="steelblue", edgecolor="black")
+    axes[0].set_title("Test MSE by Operator", fontsize=13, fontweight="bold")
+    axes[0].set_ylabel("MSE Loss")
+    axes[0].set_xticklabels(df_res["model"], rotation=30, ha="right")
+    axes[0].grid(axis="y", linestyle="--", alpha=0.7)
+
+    # Add value labels on top of bars
+    for bar in bars1:
+        yval = bar.get_height()
+        axes[0].text(
+            bar.get_x() + bar.get_width() / 2,
+            yval,
+            f"{yval:.2e}",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+        )
+
+    # Subplot 2: Relative Error
+    bars2 = axes[1].bar(df_res["model"], df_res["rel_error"], color="coral", edgecolor="black")
+    axes[1].set_title("Relative Error by Operator", fontsize=13, fontweight="bold")
+    axes[1].set_ylabel("Relative Error")
+    axes[1].set_xticklabels(df_res["model"], rotation=30, ha="right")
+    axes[1].grid(axis="y", linestyle="--", alpha=0.7)
+
+    # Add value labels on top of bars
+    for bar in bars2:
+        yval = bar.get_height()
+        axes[1].text(
+            bar.get_x() + bar.get_width() / 2,
+            yval,
+            f"{yval:.2e}" if yval < 0.01 else f"{yval:.4f}",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+        )
+
+    plt.tight_layout()
+
+    # 3. Save plot into Plots/
+    save_path = os.path.join(plot_dir, "operator_training8_summary.pdf")
+    plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.close()
+
+    print(f"\n[INFO] Bar chart successfully saved to: {save_path}")
 
 
 if __name__ == "__main__":

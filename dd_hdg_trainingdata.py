@@ -143,9 +143,10 @@ def build_master_table_from_npz(npz_path: str | Path) -> pd.DataFrame:
     return merged
 
 
-def build_operator_databases(data_dir: str | Path = "."):
+def build_operator_databases(data_dir: str | Path = "Bases"):
     """Generate training, validation, and testing tables for both Internal and Boundary learners."""
     data_dir = Path(data_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)  # Ensures the Bases folder exists
     domain_types = ["internal", "boundary"]
     split_names = ["train", "val", "test"]
 

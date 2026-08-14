@@ -6,9 +6,9 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 
-from dd_hdg_training2 import DD_HDG_Trainer
+from dd_hdg_training8 import DD_HDG_Trainer
 from dd_hdg_face_operations import extract_neighbours_indexes
-from dd_hdg_SVD2 import reconstruct_from_rom, project_to_rom
+from dd_hdg_SVD import reconstruct_from_rom, project_to_rom
 
 # =========================================================================
 # DEVICE SETUP & CONFIGURATION
@@ -20,12 +20,12 @@ print(f"Using {device} device")
 
 torch.cuda.manual_seed(42)
 
-csv_internal_test_path = 'dataset_operator_internal_train_tryout.csv'
-csv_boundary_test_path = 'dataset_operator_boundary_train_tryout.csv'
+csv_internal_test_path = 'Bases/dataset_operator_internal_train.csv'
+csv_boundary_test_path = 'Bases/dataset_operator_boundary_train.csv'
 
-csv_internal_train_path = 'dataset_operator_internal_train_tryout.csv'
-csv_boundary_train_path = 'dataset_operator_boundary_train_tryout.csv'
-npz_rom_path = 'hdg_rom_bases_tryout.npz'
+csv_internal_train_path = 'Bases/dataset_operator_internal_train.csv'
+csv_boundary_train_path = 'Bases/dataset_operator_boundary_train.csv'
+npz_rom_path = 'Bases/hdg_rom_bases.npz'
 models_dir = 'trained_operators'
 use_single_stage = True  # If False, uses a two-stage optimization approach
 use_non_true_bnd = False  # If True, initializes boundary values to zero instead of true values
@@ -36,7 +36,7 @@ n_subx, n_suby = 8, 8
 # HELPER FUNCTIONS
 # =========================================================================
 def load_model(model_name: str, input_dim: int, output_dim: int, hidden_dims=(64, 128, 64, 32)) -> nn.Module:
-    """Load a DD_HDG_Trainer model exactly as defined in dd_hdg_training2.py."""
+    """Load a DD_HDG_Trainer model exactly as defined in dd_hdg_training8.py."""
     model_path = os.path.join(models_dir, f"{model_name}_model.pth")
     model = DD_HDG_Trainer(input_dim=input_dim, output_dim=output_dim, hidden_dims=hidden_dims)
     state_dict = torch.load(model_path, map_location=device)
@@ -246,22 +246,22 @@ latent_corner_dim = 1
 in_dim = 3 + (4 * latent_face_dim) + (4 * latent_corner_dim) + x_bnd.shape[1] # 19
 
 # Load Internal Models
-S_int        = load_model("solution_internal_tryout", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=(64, 32))
-J_left_int   = load_model("flux_internal_tryout_left", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=(64, 128, 64, 32))
-J_right_int  = load_model("flux_internal_tryout_right", input_dim=in_dim, output_dim=y_J_right.shape[1], hidden_dims=(64, 128, 64, 32))
-J_top_int    = load_model("flux_internal_tryout_top", input_dim=in_dim, output_dim=y_J_top.shape[1], hidden_dims=(64, 128, 64, 32))
-J_bottom_int = load_model("flux_internal_tryout_bottom", input_dim=in_dim, output_dim=y_J_bottom.shape[1], hidden_dims=(64, 128, 64, 32))
+S_int        = load_model("solution_internal8", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=(64, 32))
+J_left_int   = load_model("flux_internal8_left", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=(64, 128, 64, 32))
+J_right_int  = load_model("flux_internal8_right", input_dim=in_dim, output_dim=y_J_right.shape[1], hidden_dims=(64, 128, 64, 32))
+J_top_int    = load_model("flux_internal8_top", input_dim=in_dim, output_dim=y_J_top.shape[1], hidden_dims=(64, 128, 64, 32))
+J_bottom_int = load_model("flux_internal8_bottom", input_dim=in_dim, output_dim=y_J_bottom.shape[1], hidden_dims=(64, 128, 64, 32))
 
 # Load Boundary Models
-S_bnd        = load_model("solution_boundary_tryout", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=(64, 32))
-J_left_bnd   = load_model("flux_boundary_tryout_left", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=(64, 128, 64, 32))
-J_right_bnd  = load_model("flux_boundary_tryout_right", input_dim=in_dim, output_dim=y_J_right.shape[1], hidden_dims=(64, 128, 64, 32))
-J_top_bnd    = load_model("flux_boundary_tryout_top", input_dim=in_dim, output_dim=y_J_top.shape[1], hidden_dims=(64, 128, 64, 32))
-J_bottom_bnd = load_model("flux_boundary_tryout_bottom", input_dim=in_dim, output_dim=y_J_bottom.shape[1], hidden_dims=(64, 128, 64, 32))
+S_bnd        = load_model("solution_boundary8", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=(64, 32))
+J_left_bnd   = load_model("flux_boundary8_left", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=(64, 128, 64, 32))
+J_right_bnd  = load_model("flux_boundary8_right", input_dim=in_dim, output_dim=y_J_right.shape[1], hidden_dims=(64, 128, 64, 32))
+J_top_bnd    = load_model("flux_boundary8_top", input_dim=in_dim, output_dim=y_J_top.shape[1], hidden_dims=(64, 128, 64, 32))
+J_bottom_bnd = load_model("flux_boundary8_bottom", input_dim=in_dim, output_dim=y_J_bottom.shape[1], hidden_dims=(64, 128, 64, 32))
 
 # Load Scalers
-x_scaler_int, y_scaler_S_int = load_scalers("solution_internal_tryout")
-x_scaler_bnd, y_scaler_S_bnd = load_scalers("solution_boundary_tryout")
+x_scaler_int, y_scaler_S_int = load_scalers("solution_internal8")
+x_scaler_bnd, y_scaler_S_bnd = load_scalers("solution_boundary8")
 
 x_mean_int  = torch.tensor(x_scaler_int.mean_, dtype=torch.float32, device=device)
 x_scale_int = torch.tensor(x_scaler_int.scale_, dtype=torch.float32, device=device)
@@ -269,17 +269,17 @@ x_mean_bnd  = torch.tensor(x_scaler_bnd.mean_, dtype=torch.float32, device=devic
 x_scale_bnd = torch.tensor(x_scaler_bnd.scale_, dtype=torch.float32, device=device)
 
 unscale_dict_int = {
-    'left':   (torch.tensor(load_scalers("flux_internal_tryout_left")[1].scale_, dtype=torch.float32, device=device),   torch.tensor(load_scalers("flux_internal_tryout_left")[1].mean_, dtype=torch.float32, device=device)),
-    'right':  (torch.tensor(load_scalers("flux_internal_tryout_right")[1].scale_, dtype=torch.float32, device=device),  torch.tensor(load_scalers("flux_internal_tryout_right")[1].mean_, dtype=torch.float32, device=device)),
-    'top':    (torch.tensor(load_scalers("flux_internal_tryout_top")[1].scale_, dtype=torch.float32, device=device),    torch.tensor(load_scalers("flux_internal_tryout_top")[1].mean_, dtype=torch.float32, device=device)),
-    'bottom': (torch.tensor(load_scalers("flux_internal_tryout_bottom")[1].scale_, dtype=torch.float32, device=device), torch.tensor(load_scalers("flux_internal_tryout_bottom")[1].mean_, dtype=torch.float32, device=device))
+    'left':   (torch.tensor(load_scalers("flux_internal8_left")[1].scale_, dtype=torch.float32, device=device),   torch.tensor(load_scalers("flux_internal8_left")[1].mean_, dtype=torch.float32, device=device)),
+    'right':  (torch.tensor(load_scalers("flux_internal8_right")[1].scale_, dtype=torch.float32, device=device),  torch.tensor(load_scalers("flux_internal8_right")[1].mean_, dtype=torch.float32, device=device)),
+    'top':    (torch.tensor(load_scalers("flux_internal8_top")[1].scale_, dtype=torch.float32, device=device),    torch.tensor(load_scalers("flux_internal8_top")[1].mean_, dtype=torch.float32, device=device)),
+    'bottom': (torch.tensor(load_scalers("flux_internal8_bottom")[1].scale_, dtype=torch.float32, device=device), torch.tensor(load_scalers("flux_internal8_bottom")[1].mean_, dtype=torch.float32, device=device))
 }
 
 unscale_dict_bnd = {
-    'left':   (torch.tensor(load_scalers("flux_boundary_tryout_left")[1].scale_, dtype=torch.float32, device=device),   torch.tensor(load_scalers("flux_boundary_tryout_left")[1].mean_, dtype=torch.float32, device=device)),
-    'right':  (torch.tensor(load_scalers("flux_boundary_tryout_right")[1].scale_, dtype=torch.float32, device=device),  torch.tensor(load_scalers("flux_boundary_tryout_right")[1].mean_, dtype=torch.float32, device=device)),
-    'top':    (torch.tensor(load_scalers("flux_boundary_tryout_top")[1].scale_, dtype=torch.float32, device=device),    torch.tensor(load_scalers("flux_boundary_tryout_top")[1].mean_, dtype=torch.float32, device=device)),
-    'bottom': (torch.tensor(load_scalers("flux_boundary_tryout_bottom")[1].scale_, dtype=torch.float32, device=device), torch.tensor(load_scalers("flux_boundary_tryout_bottom")[1].mean_, dtype=torch.float32, device=device))
+    'left':   (torch.tensor(load_scalers("flux_boundary8_left")[1].scale_, dtype=torch.float32, device=device),   torch.tensor(load_scalers("flux_boundary8_left")[1].mean_, dtype=torch.float32, device=device)),
+    'right':  (torch.tensor(load_scalers("flux_boundary8_right")[1].scale_, dtype=torch.float32, device=device),  torch.tensor(load_scalers("flux_boundary8_right")[1].mean_, dtype=torch.float32, device=device)),
+    'top':    (torch.tensor(load_scalers("flux_boundary8_top")[1].scale_, dtype=torch.float32, device=device),    torch.tensor(load_scalers("flux_boundary8_top")[1].mean_, dtype=torch.float32, device=device)),
+    'bottom': (torch.tensor(load_scalers("flux_boundary8_bottom")[1].scale_, dtype=torch.float32, device=device), torch.tensor(load_scalers("flux_boundary8_bottom")[1].mean_, dtype=torch.float32, device=device))
 }
 
 rom_data = load_svd_bases(npz_rom_path)

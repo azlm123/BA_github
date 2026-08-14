@@ -529,7 +529,7 @@ def main():
         mean_vector=U_int_mean,
         max_k=None,
         field_name="U_sub (Interior)",
-        fig_out="rel_error_U_sub_int_test.png"
+        fig_out="Plots/rel_error_U_sub_int_test.pdf"
     )
 
     # Trace 2: F_sub (Interior)
@@ -539,7 +539,7 @@ def main():
         mean_vector=F_int_mean,
         max_k=None,
         field_name="F_sub (Interior)",
-        fig_out="rel_error_F_sub_int_test.png"
+        fig_out="Plots/rel_error_F_sub_int_test.pdf"
     )
 
     # Trace 3: U_face (Interior)
@@ -549,7 +549,7 @@ def main():
         mean_vector=U_face_int_mean,
         max_k=None,
         field_name="U_face (Interior)",
-        fig_out="rel_error_U_face_int_test.png"
+        fig_out="Plots/rel_error_U_face_int_test.pdf"
     )
 
     # Trace 4: J_face (Interior)
@@ -559,7 +559,7 @@ def main():
         mean_vector=J_face_int_mean,
         max_k=None,
         field_name="J_face (Interior)",
-        fig_out="rel_error_J_face_int_test.png"
+        fig_out="Plots/rel_error_J_face_int_test.pdf"
     )
     err_U_sub_bnd, _ = compute_reconstruction_errors_vs_k(
         test_matrix=test_data["U_sub_mat"][~is_int_sub_ts],
@@ -567,7 +567,7 @@ def main():
         mean_vector=U_bnd_mean,
         max_k=None,
         field_name="U_sub (Boundary)",
-        fig_out="rel_error_U_sub_bnd_test.png"
+        fig_out="Plots/rel_error_U_sub_bnd_test.pdf"
     )
     err_F_sub_bnd, _ = compute_reconstruction_errors_vs_k(
         test_matrix=test_data["F_sub_mat"][~is_int_sub_ts],
@@ -575,7 +575,7 @@ def main():
         mean_vector=F_bnd_mean,
         max_k=None,
         field_name="F_sub (Boundary)",
-        fig_out="rel_error_F_sub_bnd_test.png"
+        fig_out="Plots/rel_error_F_sub_bnd_test.pdf"
     )
     err_U_face_bnd, _ = compute_reconstruction_errors_vs_k(
         test_matrix=test_data["U_face_mat"][~is_int_face_ts],
@@ -583,7 +583,7 @@ def main():
         mean_vector=U_face_bnd_mean,
         max_k=None,
         field_name="U_face (Boundary)",
-        fig_out="rel_error_U_face_bnd_test.png"
+        fig_out="Plots/rel_error_U_face_bnd_test.pdf"
     )
 
     err_J_face_bnd, _ = compute_reconstruction_errors_vs_k(
@@ -592,7 +592,7 @@ def main():
         mean_vector=J_face_bnd_mean,
         max_k=None,
         field_name="J_face (Boundary)",
-        fig_out="rel_error_J_face_bnd_test.png"
+        fig_out="Plots/rel_error_J_face_bnd_test.pdf"
     )
 
 
@@ -615,7 +615,7 @@ def main():
 
     # --- SAVE ALL BASES TO A DEDICATED FILE ---
     np.savez_compressed(
-        "hdg_rom_bases_cornerflux.npz",
+        "Bases/hdg_rom_bases.npz",
         U_sub_int_basis=U_int_basis, U_sub_bnd_basis=U_bnd_basis,
         F_sub_int_basis=F_int_basis, F_sub_bnd_basis=F_bnd_basis,
         U_face_int_basis=U_face_int_basis, U_face_bnd_basis=U_face_bnd_basis,
@@ -626,7 +626,7 @@ def main():
         J_face_int_mean=J_face_int_mean, J_face_bnd_mean=J_face_bnd_mean,
         U_corners_int_mean=U_corners_int_mean, U_corners_bnd_mean=U_corners_bnd_mean
     )
-    print("  -> Saved all SVD bases and means to 'hdg_rom_bases_cornerflux.npz'")
+    print("  -> Saved all SVD bases and means to 'Bases/hdg_rom_bases.npz'")
 
     # -------------------------------------------------------------------------
     # STEP 5: PROJECT ALL SPLITS (TRAIN/VAL/TEST) ONTO TRAINED BASES
@@ -683,7 +683,7 @@ def main():
 
         # --- SAVE INTERNAL DATABASE (Sliced by Parent Mask) ---
         np.savez_compressed(
-            f"hdg_rom_database_internal_{split_name}_cornerflux.npz",
+            f"Bases/hdg_rom_database_internal_{split_name}.npz",
             U_sub_rom=U_sub_int_rom, F_sub_rom=F_sub_int_rom,
             U_face_rom=U_face_rom_all[parent_is_int_face],
             J_face_rom=J_face_rom_all[parent_is_int_face],
@@ -697,7 +697,7 @@ def main():
 
         # --- SAVE BOUNDARY DATABASE (Sliced by Parent Mask) ---
         np.savez_compressed(
-            f"hdg_rom_database_boundary_{split_name}_cornerflux.npz",
+            f"Bases/hdg_rom_database_boundary_{split_name}.npz",
             U_sub_rom=U_sub_bnd_rom, F_sub_rom=F_sub_bnd_rom,
             U_face_rom=U_face_rom_all[parent_is_bnd_face],
             J_face_rom=J_face_rom_all[parent_is_bnd_face],
