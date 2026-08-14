@@ -226,7 +226,7 @@ X_bnd_const = torch.tensor(x_bnd, dtype=torch.float32, device=device)
 
 latent_face_dim   = 3
 latent_corner_dim = 1
-in_dim = 6 + (4 * latent_face_dim) + (4 * latent_corner_dim) + x_bnd.shape[1] # 30
+in_dim = x_f.shape[1] + (4 * latent_face_dim) + (4 * latent_corner_dim) + x_bnd.shape[1] # 30
 
 # Load Solution Models
 S_int = load_model("solution_internal6", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=(128, 64))
@@ -782,5 +782,5 @@ axes[1, 1].set_title(f"Abs Error | Pred vs True (Rel Err: {rel_physical_error:.2
 plt.colorbar(im3, ax=axes[1, 1])
 
 plt.tight_layout()
+plt.savefig(f"Plots/Inference6Result.pdf", dpi=300)
 plt.show()
-plt.savefig(f"comparison_plots_sample_{sample_idx}.pdf", dpi=300)

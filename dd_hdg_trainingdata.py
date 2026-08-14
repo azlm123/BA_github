@@ -152,7 +152,7 @@ def build_operator_databases(data_dir: str | Path = "Bases"):
 
     for d_type in domain_types:
         for s_name in split_names:
-            file_name = f"hdg_rom_database_{d_type}_{s_name}_cornerflux.npz"
+            file_name = f"hdg_rom_database_{d_type}_{s_name}.npz"
             file_path = data_dir / file_name
 
             if not file_path.exists():
@@ -162,7 +162,7 @@ def build_operator_databases(data_dir: str | Path = "Bases"):
             print(f"Processing {file_name}...")
             df = build_master_table_from_npz(file_path)
 
-            output_csv = data_dir / f"dataset_operator_{d_type}_{s_name}_cornerflux.csv"
+            output_csv = data_dir / f"dataset_operator_{d_type}_{s_name}.csv"
             df.to_csv(output_csv, index=False)
             print(f" -> Saved: {output_csv} | Shape: {df.shape}")
 

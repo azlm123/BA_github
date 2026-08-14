@@ -241,9 +241,9 @@ int_mask = ~bnd_mask
 X_f_const   = torch.tensor(x_f, dtype=torch.float32, device=device)
 X_bnd_const = torch.tensor(x_bnd, dtype=torch.float32, device=device)
 
-latent_face_dim   =4
+latent_face_dim   =3
 latent_corner_dim = 1
-in_dim = 3 + (4 * latent_face_dim) + (4 * latent_corner_dim) + x_bnd.shape[1] # 19
+in_dim = x_f.shape[1] + (4 * latent_face_dim) + (4 * latent_corner_dim) + x_bnd.shape[1] # 30
 
 # Load Internal Models
 S_int        = load_model("solution_internal8", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=(64, 32))
@@ -340,22 +340,22 @@ global_corner_indices = torch.tensor(corner_lookup_df[is_global_corner_mask]['n_
 
 # --- A. EXTRACT REAL PHYSICAL BOUNDARY FACES ---
 bottom_df = sample_df[sample_df['ny_index'] == 0].sort_values(by='nx_index')
-true_bottom = torch.tensor(bottom_df[['U_face_bottom_mode_0', 'U_face_bottom_mode_1', 'U_face_bottom_mode_2','U_face_bottom_mode_3']].values, dtype=torch.float32, device=device)
+true_bottom = torch.tensor(bottom_df[['U_face_bottom_mode_0', 'U_face_bottom_mode_1', 'U_face_bottom_mode_2']].values, dtype=torch.float32, device=device)
 if use_non_true_bnd:
     true_bottom = torch.tensor(project_to_rom(np.zeros((bottom_df.shape[0], 5)), U_face_bnd_basis, U_face_bnd_mean), dtype=torch.float32, device=device)
 
 top_df = sample_df[sample_df['ny_index'] == n_suby - 1].sort_values(by='nx_index')
-true_top = torch.tensor(top_df[['U_face_top_mode_0', 'U_face_top_mode_1', 'U_face_top_mode_2','U_face_top_mode_3']].values, dtype=torch.float32, device=device)
+true_top = torch.tensor(top_df[['U_face_top_mode_0', 'U_face_top_mode_1', 'U_face_top_mode_2']].values, dtype=torch.float32, device=device)
 if use_non_true_bnd:
     true_top = torch.tensor(project_to_rom(np.zeros((top_df.shape[0], 5)), U_face_bnd_basis, U_face_bnd_mean), dtype=torch.float32, device=device)
 
 left_df = sample_df[sample_df['nx_index'] == 0].sort_values(by='ny_index')
-true_left = torch.tensor(left_df[['U_face_left_mode_0', 'U_face_left_mode_1', 'U_face_left_mode_2','U_face_left_mode_3']].values, dtype=torch.float32, device=device)
+true_left = torch.tensor(left_df[['U_face_left_mode_0', 'U_face_left_mode_1', 'U_face_left_mode_2']].values, dtype=torch.float32, device=device)
 if use_non_true_bnd:
     true_left = torch.tensor(project_to_rom(np.zeros((left_df.shape[0], 5)), U_face_bnd_basis, U_face_bnd_mean), dtype=torch.float32, device=device)
 
 right_df = sample_df[sample_df['nx_index'] == n_subx - 1].sort_values(by='ny_index')
-true_right = torch.tensor(right_df[['U_face_right_mode_0', 'U_face_right_mode_1', 'U_face_right_mode_2','U_face_right_mode_3']].values, dtype=torch.float32, device=device)
+true_right = torch.tensor(right_df[['U_face_right_mode_0', 'U_face_right_mode_1', 'U_face_right_mode_2']].values, dtype=torch.float32, device=device)
 if use_non_true_bnd:
     true_right = torch.tensor(project_to_rom(np.zeros((right_df.shape[0], 5)), U_face_bnd_basis, U_face_bnd_mean), dtype=torch.float32, device=device)
 
@@ -444,7 +444,7 @@ print(f" -> Best matching train sample ID: {best_sample_id} | Relative F_sub Err
 
 best_df = df_train[df_train['sample_index'] == best_sample_id].sort_values(by=['ny_index', 'nx_index']).reset_index(drop=True)
 
-init_face_values = np.zeros((n_faces, 4), dtype=np.float32)
+init_face_values = np.zeros((n_faces, 3), dtype=np.float32)
 init_corner_values = np.zeros((n_corners, 1), dtype=np.float32)
 
 for _, row in face_lookup_df.iterrows():
@@ -453,7 +453,7 @@ for _, row in face_lookup_df.iterrows():
     uid = int(row['n_unique'])
     
     sub_row = best_df[(best_df['nx_index'] == nx) & (best_df['ny_index'] == ny)]
-    for i in range(4):
+    for i in range(3):
         val = sub_row[f'U_face_{direction}_mode_{i}'].values[0]
         init_face_values[uid, i] = val
 
@@ -705,15 +705,6 @@ axes[2].set_title("Absolute Error Field")
 fig.colorbar(im2, ax=axes[2])
 
 plt.tight_layout()
+plt.savefig("Plots/Inference8Result.pdf", dpi=300)
 plt.show()
-# Create a copy where only Mode 0 is preserved
-predicted_rom_modes_mode0_only = np.zeros_like(predicted_rom_modes)
-predicted_rom_modes_mode0_only[:, 0] = predicted_rom_modes[:, 0]
 
-# Reconstruct using only Mode 0
-U_pred_mode0 = reconstruct_full_solution(
-    predicted_rom_modes_mode0_only, is_bnd_mask, rom_data, n_subx=n_subx, n_suby=n_suby
-)
-
-rel_error_mode0 = np.linalg.norm(U_pred_mode0 - U_true_full) / np.linalg.norm(U_true_full)
-print(f"Physical Error using ONLY Mode 0: {rel_error_mode0:.4e}")

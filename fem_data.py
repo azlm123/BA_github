@@ -39,5 +39,3 @@ def generate_poisson_data(n_samples, dx, nely, nelx):
     return F, U
 
 
-F, U = generate_poisson_data(2, 0.1, 8, 8)  # Example usage to generate data for testing
-print(F[0,0,:], U[0,0,:])

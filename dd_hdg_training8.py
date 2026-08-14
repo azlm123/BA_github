@@ -114,9 +114,9 @@ def extract_features_and_targets(df: pd.DataFrame, operator: str, flux_direction
 
 def load_dataset_split(domain_type: str, operator: str, flux_direction: str = None):
     """Load pre-split CSV files for train, val, and test datasets."""
-    train_file = f"dataset_operator_{domain_type}_train.csv"
-    val_file = f"dataset_operator_{domain_type}_val.csv"
-    test_file = f"dataset_operator_{domain_type}_test.csv"
+    train_file = f"Bases/dataset_operator_{domain_type}_train.csv"
+    val_file = f"Bases/dataset_operator_{domain_type}_val.csv"
+    test_file = f"Bases/dataset_operator_{domain_type}_test.csv"
 
     for f in [train_file, val_file, test_file]:
         if not os.path.exists(f):
@@ -234,6 +234,25 @@ def train_single_operator(domain_type: str, operator: str, flux_direction: str =
             curr_lr = optimizer.param_groups[0]['lr']
             print(f"  Epoch {epoch+1:3d}/{NUM_EPOCHS} | Train Loss: {tr_loss:.6f} | Val Loss: {va_loss:.6f} | LR: {curr_lr:.2e}")
 
+    # --- Plot Loss Evolution ---
+    os.makedirs("Plots", exist_ok=True)
+    plot_path = os.path.join("Plots", f"{model_name}_loss_evolution.pdf")
+    
+    epochs_range = range(1, len(train_losses) + 1)
+    plt.figure(figsize=(8, 5))
+    plt.plot(epochs_range, train_losses, label="Training Loss", linewidth=1.8)
+    plt.plot(epochs_range, val_losses, label="Validation Loss", linewidth=1.8, linestyle="--")
+    plt.yscale("log")
+    plt.xlabel("Epoch", fontsize=12)
+    plt.ylabel("Loss (log scale)", fontsize=12)
+    plt.title(f"Loss Evolution: {model_name}", fontsize=14)
+    plt.grid(True, which="both", linestyle=":", alpha=0.6)
+    plt.legend(fontsize=11)
+    plt.tight_layout()
+    plt.savefig(plot_path, format="pdf", dpi=300)
+    plt.close()
+    print(f"  ✓ Loss curve saved to '{plot_path}'")
+
     # 4. Evaluation on Test Set
     test_loss = validation_loop(test_loader, model, LOSS_FN)
     print(f"  ✓ Final Test MSE Loss (Normalized): {test_loss:.6f}")
@@ -248,7 +267,7 @@ def train_single_operator(domain_type: str, operator: str, flux_direction: str =
     y_true = y_scaler.inverse_transform(y_true_norm)
 
     # Load DOMAIN-SPECIFIC POD Basis for physical field reconstruction
-    npz_basis_path ="hdg_rom_bases.npz"
+    npz_basis_path ="Bases/hdg_rom_bases.npz"
     if os.path.exists(npz_basis_path):
         rom_data = np.load(npz_basis_path)
         if operator == 'solution':
