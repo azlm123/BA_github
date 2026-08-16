@@ -2,34 +2,41 @@
 
 This repository implements a **Domain Decomposition Hybridizable Discontinuous Galerkin (DD-HDG)** framework accelerated by **Reduced-Order Modeling (ROM)** using **Proper Orthogonal Decomposition (POD)/Singular Value Decomposition (SVD)** and **Deep Neural Operators**.
 
-The workflow covers the complete pipeline, from snapshot compression and reduced-order basis construction to dataset preparation, neural-operator training, and full-domain inference across multiple subdomains.
+The workflow covers the complete pipeline, from snapshot compression and reduced-order basis construction to dataset preparation, hyperparameter optimization, neural-operator training, and full-domain inference across multiple subdomains.
 
 ## 📁 Repository Structure
 
 ```text
 .
-├── Bases/                  # SVD bases, mean vectors (.npz), and tabular datasets (.csv)
-├── Plots/                  # SVD truncation plots, training-loss curves, and evaluation charts (.pdf)
+├── Bases/                  # SVD bases, mean vectors (.npz), tabular datasets (.csv),
+│                           # and hyperparameter-study results
+├── Plots/                  # SVD truncation plots, training-loss curves,
+│                           # evaluation charts, and hyperparameter-study plots (.pdf)
 ├── trained_models/         # Trained neural-operator weights (.pth) and feature scalers (.pkl)
 │
 ├── dd_hdg_SVD.py           # Step 1: SVD basis construction and rank truncation
 ├── dd_hdg_trainingdata.py  # Step 2: Training-dataset generation for subelements
-├── dd_hdg_training6.py     # Step 3a: Neural-operator training (6-operator setup)
-├── dd_hdg_training8.py     # Step 3b: Neural-operator training (10-operator setup)
-├── dd_hdg_inference6.py    # Step 4a: Full-domain inference using 6 operators
-└── dd_hdg_inference8.py    # Step 4b: Full-domain inference using 10 operators
+├── dd_hdg_hyperparameterstudy.py
+│                           # Step 3 (optional): Hyperparameter grid search
+├── dd_hdg_training6.py     # Step 4a: Neural-operator training (6-operator setup)
+├── dd_hdg_training8.py     # Step 4b: Neural-operator training (10-operator setup)
+├── dd_hdg_inference6.py    # Step 5a: Full-domain inference using 6 operators
+└── dd_hdg_inference8.py    # Step 5b: Full-domain inference using 10 operators
 ```
 
 ---
 
 ## 🚀 Workflow
 
-The complete pipeline consists of four steps:
+The complete pipeline consists of the following steps:
 
 1. **POD/SVD basis generation and snapshot compression**
 2. **Tabular training-dataset preparation**
-3. **Neural-operator training**
-4. **Full-domain inference**
+3. **Optional hyperparameter study**
+4. **Neural-operator training**
+5. **Full-domain inference**
+
+The hyperparameter study is optional and can be used to identify suitable neural-network configurations before the final training stage.
 
 ---
 
@@ -83,11 +90,85 @@ Six CSV files are generated in `Bases/`:
 * Training, validation, and test datasets for **internal elements**
 * Training, validation, and test datasets for **boundary elements**
 
-These datasets provide the input-output pairs required by the neural operators in the next stage.
+These datasets provide the input-output pairs required by the neural operators and the hyperparameter study.
 
 ---
 
-## 3. Neural-Operator Training
+## 3. Optional Hyperparameter Study
+
+Before performing the final neural-operator training, an optional hyperparameter study can be performed using:
+
+```bash
+python dd_hdg_hyperparameterstudy.py
+```
+
+The purpose of this study is to identify suitable neural-network architectures and training parameters for the different operators.
+
+### Hyperparameters
+
+The script performs a **grid search** over the following parameters:
+
+| Hyperparameter            | Values                                                          |
+| ------------------------- | --------------------------------------------------------------- |
+| Hidden-layer architecture | `(64, 32)`, `(128, 64)`, `(64, 128, 64, 32)`, `(128, 128, 128)` |
+| Learning rate             | `1e-2`, `5e-3`, `1e-3`                                          |
+| Batch size                | `32`, `64`, `128`                                               |
+| Activation function       | `SiLU`, `ReLU`                                                  |
+| Weight decay              | `5e-4`                                                          |
+
+This results in **72 hyperparameter configurations per operator**.
+
+For each configuration, the model is trained and evaluated using:
+
+* **Test Mean Squared Error (MSE)**
+* **Relative reconstruction error** of the reconstructed physical field
+
+The relative reconstruction error is computed after transforming the predicted reduced-order coefficients back to the physical solution/flux field using the corresponding ROM basis.
+
+### Operator configurations
+
+The study can be performed for both available training setups:
+
+* `training6` — 6-operator configuration
+* `training8` — 10-operator configuration
+
+The script evaluates the relevant operators for the selected setup and identifies the configuration with the lowest relative reconstruction error for each operator.
+
+### Generated outputs
+
+Detailed results are stored in `Bases/`:
+
+```text
+Bases/
+├── hyperparameter_study_training6.csv
+└── hyperparameter_study_training8.csv
+```
+
+Each CSV file contains the tested configuration and corresponding performance metrics, including:
+
+* Operator name
+* Network architecture
+* Learning rate
+* Batch size
+* Activation function
+* Test MSE
+* Relative reconstruction error
+
+A summary plot showing the **best relative reconstruction error for each operator** is saved in `Plots/`:
+
+```text
+Plots/
+├── hyperparameter_study_training6_best_summary.pdf
+└── hyperparameter_study_training8_best_summary.pdf
+```
+
+The summary plot uses a logarithmic scale for the relative reconstruction error to facilitate comparison between operators.
+
+> **Note:** The hyperparameter study is intended for model selection. It does **not** replace the final training scripts. After identifying suitable hyperparameters, the selected configurations can be used for the final neural-operator training.
+
+---
+
+## 4. Neural-Operator Training
 
 Two training configurations are available.
 
@@ -160,7 +241,7 @@ The trained models and preprocessing objects are stored in `trained_models/`:
 
 ---
 
-## 4. Full-Domain Inference
+## 5. Full-Domain Inference
 
 After training, run the inference script corresponding to the selected operator configuration.
 
@@ -195,7 +276,9 @@ The project requires:
 
 ## 🔄 End-to-End Execution
 
-For a complete run, execute the scripts in the following order:
+### Standard workflow
+
+For a standard run without hyperparameter optimization:
 
 ```bash
 # Step 1 — Construct reduced-order bases
@@ -215,4 +298,31 @@ python dd_hdg_inference6.py
 python dd_hdg_inference8.py
 ```
 
-Choose the **6-operator** or **10-operator** configuration consistently between the training and inference stages.
+### Workflow with hyperparameter study
+
+If hyperparameter optimization is desired:
+
+```bash
+# Step 1 — Construct reduced-order bases
+python dd_hdg_SVD.py
+
+# Step 2 — Generate tabular training datasets
+python dd_hdg_trainingdata.py
+
+# Step 3 — Optional: Run hyperparameter study
+python dd_hdg_hyperparameterstudy.py
+
+# Step 4 — Train neural operators using the selected configuration
+python dd_hdg_training6.py
+# or
+python dd_hdg_training8.py
+
+# Step 5 — Perform full-domain inference
+python dd_hdg_inference6.py
+# or
+python dd_hdg_inference8.py
+```
+
+The hyperparameter study can therefore be skipped when suitable hyperparameters are already known.
+
+> **Recommended workflow:** When developing or modifying the neural operators, run the hyperparameter study first and use the resulting performance metrics to select appropriate architectures and training parameters for the final models.
