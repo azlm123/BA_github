@@ -394,8 +394,8 @@ for iy in range(n_suby):
 
 idx_batch_right_face  = torch.tensor(vertical_match_A, dtype=torch.long, device=device)
 idx_batch_left_face   = torch.tensor(vertical_match_B, dtype=torch.long, device=device)
-idx_batch_bottom_face = torch.tensor(horizontal_match_C, dtype=torch.long, device=device)
-idx_batch_top_face    = torch.tensor(horizontal_match_D, dtype=torch.long, device=device)
+idx_batch_bottom_face = torch.tensor(horizontal_match_D, dtype=torch.long, device=device)
+idx_batch_top_face    = torch.tensor(horizontal_match_C, dtype=torch.long, device=device)
 
 idx_dict = {
     'bottom': torch.tensor(face_lookup_df[face_lookup_df['direction'] == 'bottom'].sort_values(by=['ny_index', 'nx_index'])['n_unique'].values, device=device),

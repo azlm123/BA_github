@@ -15,8 +15,11 @@ n_train_raw = 160
 n_val = 20
 n_test = 20
 n_samples_total = n_train_raw + n_val + n_test  # 200 samples
-choose_k = True  # If True, manually set truncation ranks; if False, use energy-based selection
-
+choose_k = 'manual'  # Options: None for supp between elbow and energy, 'manual' for manual selection, 'elbow' for elbow method, 'energy' for energy threshold
+k_U_sub = 6
+k_F_sub = 6
+k_U_face = 3
+k_J_face = 3
 dx = 0.1
 ENERGY_THRESHOLD = 0.999
 
@@ -491,21 +494,35 @@ def main():
     U_corners_bnd_mean = U_corners_bnd_mat_tr.mean(axis=0, keepdims=True)
 
     # --- Rank Truncation ---
-    U_shared_k = min(max(U_int_k, U_bnd_k, U_int_k_elbow, U_bnd_k_elbow), U_int_Vt.shape[0], U_bnd_Vt.shape[0])
-    print(f"  -> Truncation Ranks: U_int_k={U_int_k}, U_bnd_k={U_bnd_k}, U_int_k_elbow={U_int_k_elbow}, U_bnd_k_elbow={U_bnd_k_elbow}")
-    F_shared_k = min(max(F_int_k, F_bnd_k, F_int_k_elbow, F_bnd_k_elbow), F_int_Vt.shape[0], F_bnd_Vt.shape[0])
-    print(f"  -> Truncation Ranks: F_int_k={F_int_k}, F_bnd_k={F_bnd_k}, F_int_k_elbow={F_int_k_elbow}, F_bnd_k_elbow={F_bnd_k_elbow}")
-    U_face_shared_k = min(max(U_face_int_k, U_face_bnd_k, U_face_int_k_elbow, U_face_bnd_k_elbow), U_face_int_Vt.shape[0], U_face_bnd_Vt.shape[0])
-    print(f"  -> Truncation Ranks: U_face_int_k={U_face_int_k}, U_face_bnd_k={U_face_bnd_k}, U_face_int_k_elbow={U_face_int_k_elbow}, U_face_bnd_k_elbow={U_face_bnd_k_elbow}")
-    J_face_shared_k = min(max(J_face_int_k, J_face_bnd_k, J_face_int_k_elbow, J_face_bnd_k_elbow), J_face_int_Vt.shape[0], J_face_bnd_Vt.shape[0])
-    print(f"  -> Truncation Ranks: J_face_int_k={J_face_int_k}, J_face_bnd_k={J_face_bnd_k}, J_face_int_k_elbow={J_face_int_k_elbow}, J_face_bnd_k_elbow={J_face_bnd_k_elbow}")
-    if choose_k==True:
-        U_shared_k = 6
-        F_shared_k = 6
-        U_face_shared_k = 3
-        J_face_shared_k = 3
+    if choose_k is None:
+        # Default combined / conservative truncation
+        U_shared_k = min(max(U_int_k, U_bnd_k, U_int_k_elbow, U_bnd_k_elbow), U_int_Vt.shape[0], U_bnd_Vt.shape[0])
+        F_shared_k = min(max(F_int_k, F_bnd_k, F_int_k_elbow, F_bnd_k_elbow), F_int_Vt.shape[0], F_bnd_Vt.shape[0])
+        U_face_shared_k = min(max(U_face_int_k, U_face_bnd_k, U_face_int_k_elbow, U_face_bnd_k_elbow), U_face_int_Vt.shape[0], U_face_bnd_Vt.shape[0])
+        J_face_shared_k = min(max(J_face_int_k, J_face_bnd_k, J_face_int_k_elbow, J_face_bnd_k_elbow), J_face_int_Vt.shape[0], J_face_bnd_Vt.shape[0])
 
-    print(f"  -> Truncation Ranks: U_sub={U_shared_k}, F_sub={F_shared_k}, U_face={U_face_shared_k}, J_face={J_face_shared_k}")
+    elif choose_k == 'energy':
+        U_shared_k = min(max(U_int_k, U_bnd_k), U_int_Vt.shape[0], U_bnd_Vt.shape[0])
+        F_shared_k = min(max(F_int_k, F_bnd_k), F_int_Vt.shape[0], F_bnd_Vt.shape[0])
+        U_face_shared_k = min(max(U_face_int_k, U_face_bnd_k), U_face_int_Vt.shape[0], U_face_bnd_Vt.shape[0])
+        J_face_shared_k = min(max(J_face_int_k, J_face_bnd_k), J_face_int_Vt.shape[0], J_face_bnd_Vt.shape[0])
+
+    elif choose_k == 'elbow':
+        U_shared_k = min(max(U_int_k_elbow, U_bnd_k_elbow), U_int_Vt.shape[0], U_bnd_Vt.shape[0])
+        F_shared_k = min(max(F_int_k_elbow, F_bnd_k_elbow), F_int_Vt.shape[0], F_bnd_Vt.shape[0])
+        U_face_shared_k = min(max(U_face_int_k_elbow, U_face_bnd_k_elbow), U_face_int_Vt.shape[0], U_face_bnd_Vt.shape[0])
+        J_face_shared_k = min(max(J_face_int_k_elbow, J_face_bnd_k_elbow), J_face_int_Vt.shape[0], J_face_bnd_Vt.shape[0])
+
+    elif choose_k == 'manual':
+        U_shared_k = k_U_sub
+        F_shared_k = k_F_sub
+        U_face_shared_k = k_U_face
+        J_face_shared_k = k_J_face
+
+    else:
+        raise ValueError(f"Unknown choose_k mode: '{choose_k}'. Expected None, 'manual', 'elbow', or 'energy'.")
+
+    print(f"  -> Selected Ranks: U={U_shared_k}, F={F_shared_k}, U_face={U_face_shared_k}, J_face={J_face_shared_k}")
     # -------------------------------------------------------------------------
     # STEP 4b: TRACE RELATIVE RECONSTRUCTION ERROR ON TEST DATA VS. k
     # -------------------------------------------------------------------------

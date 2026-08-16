@@ -31,7 +31,7 @@ use_single_stage = True  # If False, uses a two-stage optimization approach
 use_non_true_bnd = False
 use_two_stage = False  # If True, performs a two-stage optimization: first align faces, then corners
 use_adam_warmup = True  # If True, initializes boundary values to zero instead of true values
-
+use_best_match_init = False  # If True, initializes face and corner values using best-match from training data
 n_subx, n_suby = 8, 8
 
 # =========================================================================
@@ -111,32 +111,32 @@ def load_combined_data_stacked(
     return X_f, X_bnd, y, stacked_df, is_bnd_mask
 
 def create_face_lookup(n_subx: int, n_suby: int):
-    horizontal_id = {(ix, iy): uid for uid, (ix, iy) in enumerate([(x, y) for y in range(n_suby + 1) for x in range(n_subx)])}
-    vertical_id = {(ix, iy): uid + len(horizontal_id) for uid, (ix, iy) in enumerate([(x, y) for y in range(n_suby) for x in range(n_subx + 1)])}
+    horizontal_id = {(iy, ix): uid for uid, (ix, iy) in enumerate([(x, y) for y in range(n_suby + 1) for x in range(n_subx)])}
+    vertical_id = {(iy, ix): uid + len(horizontal_id) for uid, (ix, iy) in enumerate([(x, y) for y in range(n_suby) for x in range(n_subx + 1)])}
 
     rows = []
     for nx in range(n_subx):
         for ny in range(n_suby):
             rows.extend([
-                (nx, ny, 'bottom', horizontal_id[(nx, ny)]),
-                (nx, ny, 'top', horizontal_id[(nx, ny + 1)]),
-                (nx, ny, 'left', vertical_id[(nx, ny)]),
-                (nx, ny, 'right', vertical_id[(nx + 1, ny)])
+                (ny, nx, 'bottom', horizontal_id[(ny, nx)]),
+                (ny, nx, 'top', horizontal_id[(ny + 1, nx)]),
+                (ny, nx, 'left', vertical_id[(ny, nx)]),
+                (ny, nx, 'right', vertical_id[(ny, nx + 1)])
             ])
-    return rows, pd.DataFrame(rows, columns=['nx_index', 'ny_index', 'direction', 'n_unique'])
+    return rows, pd.DataFrame(rows, columns=['ny_index', 'nx_index', 'direction', 'n_unique'])
 
 def create_corner_lookup(n_subx: int, n_suby: int):
-    corner_id = {(ix, iy): uid for uid, (ix, iy) in enumerate([(x, y) for y in range(n_suby + 1) for x in range(n_subx + 1)])}
+    corner_id = {(iy, ix): uid for uid, (ix, iy) in enumerate([(x, y) for y in range(n_suby + 1) for x in range(n_subx + 1)])}
     rows = []
     for ny in range(n_suby):
         for nx in range(n_subx):
             rows.extend([
-                (nx, ny, 'bottom_left', corner_id[(nx, ny)]),
-                (nx, ny, 'bottom_right', corner_id[(nx + 1, ny)]),
-                (nx, ny, 'top_left', corner_id[(nx, ny + 1)]),
-                (nx, ny, 'top_right', corner_id[(nx + 1, ny + 1)])
+                (ny, nx, 'bottom_left', corner_id[(ny, nx)]),
+                (ny, nx, 'bottom_right', corner_id[(ny, nx + 1)]),
+                (ny, nx, 'top_left', corner_id[(ny + 1, nx)]),
+                (ny, nx, 'top_right', corner_id[(ny + 1, nx + 1)])
             ])
-    return rows, pd.DataFrame(rows, columns=['nx_index', 'ny_index', 'corner_position', 'n_unique'])
+    return rows, pd.DataFrame(rows, columns=['ny_index', 'nx_index', 'corner_position', 'n_unique'])
 
 def reconstruct_full_solution(
     predicted_rom_modes, 
@@ -369,8 +369,8 @@ for iy in range(n_suby):
 
 idx_batch_right_face  = torch.tensor(vertical_match_A, dtype=torch.long, device=device)
 idx_batch_left_face   = torch.tensor(vertical_match_B, dtype=torch.long, device=device)
-idx_batch_bottom_face = torch.tensor(horizontal_match_C, dtype=torch.long, device=device)
-idx_batch_top_face    = torch.tensor(horizontal_match_D, dtype=torch.long, device=device)
+idx_batch_bottom_face = torch.tensor(horizontal_match_D, dtype=torch.long, device=device)
+idx_batch_top_face    = torch.tensor(horizontal_match_C, dtype=torch.long, device=device)
 
 idx_dict = {
     'bottom': torch.tensor(face_lookup_df[face_lookup_df['direction'] == 'bottom'].sort_values(by=['ny_index', 'nx_index'])['n_unique'].values, device=device),
@@ -455,10 +455,12 @@ for _, row in corner_lookup_df.iterrows():
         val = sub_row[f'U_corners_{pos}_mode_{i}'].values[0]
         init_corner_values[uid, i] = val
 
-
-
 face_values = torch.tensor(init_face_values, dtype=torch.float32, device=device).requires_grad_()
 corner_values = torch.tensor(init_corner_values, dtype=torch.float32, device=device).requires_grad_()
+
+with torch.no_grad():
+    face_values[global_boundary_indices] = true_global_boundaries
+    corner_values[global_corner_indices] = true_global_corners
 
 # Pre-create static reference tensors once outside loop
 init_face_tensor = torch.tensor(init_face_values, dtype=torch.float32, device=device)
@@ -513,8 +515,8 @@ def compute_fluxes_routed():
 
     total_loss = (weights['interior'] * (loss_vertical + loss_horizontal) + 
                   weights['face'] * face_boundary_loss + 
-                  weights['corner'] * corner_boundary_loss )
-                  #+1e-3 * reg_loss)
+                  weights['corner'] * corner_boundary_loss 
+                  +1e-3 * reg_loss)
     return total_loss, loss_vertical, loss_horizontal, face_boundary_loss, corner_boundary_loss
 
 print("\n--- OPTIMIZATION: L-BFGS ---")
@@ -522,7 +524,7 @@ print("\n--- OPTIMIZATION: L-BFGS ---")
 if use_single_stage:
     optimizer_lbfgs = torch.optim.LBFGS([face_values, corner_values], lr=1.0, max_iter=20, line_search_fn='strong_wolfe')
     
-    for epoch in range(20):
+    for epoch in range(800):
         def closure():
             optimizer_lbfgs.zero_grad()
             total_loss, _, _, _, _ = compute_fluxes_routed()
@@ -544,9 +546,9 @@ if use_single_stage:
         if (epoch + 1) % 10 == 0 or epoch == 0:
             print(f"Epoch {epoch + 1:02d} | Total Loss: {total_loss.item():.6e} | Vert: {l_vert.item():.6e} | Horz: {l_horz.item():.6e} | Face: {l_face.item():.6e} | Corner: {l_corner.item():.6e}")
         
-        if total_loss.item() < 1e-4:
-            print(f"Converged at Epoch {epoch + 1:02d} with Total Loss: {total_loss.item():.6e}")
-            break
+        #if total_loss.item() < 1e-4:
+            #print(f"Converged at Epoch {epoch + 1:02d} with Total Loss: {total_loss.item():.6e}")
+            #break
 else:
     if use_two_stage:
         # STAGE 1
