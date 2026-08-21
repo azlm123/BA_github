@@ -1,0 +1,11 @@
+model,n_f_sub_cols,n_u_cols,mean_weight_norm_f_sub,mean_weight_norm_u,u_over_f_ratio
+solution_internal8modified,6,16,0.019318342,0.65841603,34.082428
+flux_internal8modified_bottom,6,16,0.08149914,0.87839746,10.777997
+flux_internal8modified_right,6,16,0.09296172,0.8742217,9.404104
+flux_internal8modified_top,6,16,0.08177575,0.8582841,10.495583
+flux_internal8modified_left,6,16,0.12227852,0.88032913,7.1993766
+solution_boundary8modified,6,24,0.024151513,0.5864827,24.283476
+flux_boundary8modified_bottom,6,24,0.094561316,0.63438433,6.708709
+flux_boundary8modified_right,6,24,0.05007054,0.5256002,10.497194
+flux_boundary8modified_top,6,24,0.043917056,0.5056147,11.512946
+flux_boundary8modified_left,6,24,0.04647529,0.51184875,11.013352

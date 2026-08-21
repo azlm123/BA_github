@@ -37,7 +37,7 @@ use_non_true_bnd = False  # If True, initializes boundary values to zero instead
 # 'zeros'               : seed all faces/corners at 0
 # 'constant'            : seed all faces/corners at interior_init_constant
 # 'random'              : seed with iid Gaussian noise, mean=interior_init_random_mean, std=interior_init_random_std
-interior_init_mode = 'per_subdomain_match'  # 'nearest_match', 'per_subdomain_match', 'zeros', 'constant', 'random'
+interior_init_mode = 'nearest_match'  # 'nearest_match', 'per_subdomain_match', 'zeros', 'constant', 'random'
 interior_init_constant = 0.0
 interior_init_random_mean = 0.0
 interior_init_random_std = 1.0
@@ -692,11 +692,11 @@ def compute_fluxes_routed():
     face_boundary_loss   = loss_fn(face_values[global_boundary_indices], true_global_boundaries)
     corner_boundary_loss = loss_fn(corner_values[global_corner_indices], true_global_corners)
 
-    total_loss = weights['interior'] * (loss_vertical + loss_horizontal) + weights['face'] * face_boundary_loss + weights['corner'] * corner_boundary_loss + 1e-1 * reg_loss
+    total_loss = weights['interior'] * (loss_vertical + loss_horizontal) + weights['face'] * face_boundary_loss + weights['corner'] * corner_boundary_loss + 0 * reg_loss
     return total_loss, loss_vertical, loss_horizontal ,face_boundary_loss, corner_boundary_loss
 
 print("\n--- OPTIMIZATION: L-BFGS (INTERIOR FACES & CORNERS; BOUNDARY PINNED) ---")
-optimizer_lbfgs = torch.optim.LBFGS([face_values_interior, corner_values_interior], lr=1.0, max_iter=400,history_size=150, line_search_fn='strong_wolfe')
+optimizer_lbfgs = torch.optim.LBFGS([face_values_interior, corner_values_interior], lr=1.0, max_iter=20,history_size=100, line_search_fn='strong_wolfe')
 
 def closure():
     optimizer_lbfgs.zero_grad()
@@ -829,52 +829,92 @@ plt.show()
 U_pred_full = reconstruct_full_solution(predicted_rom_modes, is_bnd_mask, rom_data, n_subx=n_subx, n_suby=n_suby)
 U_true_full = reconstruct_full_solution(target_rom_modes, is_bnd_mask, rom_data, n_subx=n_subx, n_suby=n_suby)
 
-# Calculate global physical field error
+#Calculate global physical field error
 abs_error_grid = np.abs(U_pred_full - U_true_full)
-rel_error_physical = np.linalg.norm(U_pred_full - U_true_full) / np.linalg.norm(U_true_full)
-print(f"Global Reconstructed Physical Solution Relative Error: {rel_error_physical:.4e}")
-
-# Reconstruct the physical field for the closest-matching training sample
-# (the one used to seed the initial guess) so it can be compared alongside
-# the prediction and ground truth.
-_, _, y_train_S, _, train_is_bnd_mask = load_combined_data_stacked(
-    csv_internal_train_path,
-    csv_boundary_train_path,
-    operator='solution',
-    sample_index=best_sample_id
+rel_error_physical = np.linalg.norm(U_pred_full - U_true_full) / np.linalg.norm(
+    U_true_full
+)
+print(
+    f"Global Reconstructed Physical Solution Relative Error: {rel_error_physical:.4e}"
 )
 
-U_train_closest = reconstruct_full_solution(
-    y_train_S,
-    train_is_bnd_mask,
-    rom_data,
-    n_subx=n_subx,
-    n_suby=n_suby
+# Check if nearest match mode was selected
+is_nearest_match = (
+    str(interior_init_mode).lower().replace(" ", "_") == "nearest_match"
 )
 
-rel_train_error = np.linalg.norm(U_train_closest - U_true_full) / (np.linalg.norm(U_true_full) + 1e-15)
-print(f"Closest Train Sample Physical Field Relative Error: {rel_train_error:.4e}")
+if is_nearest_match:
+  # Reconstruct physical field for the closest training sample
+  _, _, y_train_S, _, train_is_bnd_mask = load_combined_data_stacked(
+      csv_internal_train_path,
+      csv_boundary_train_path,
+      operator="solution",
+      sample_index=best_sample_id,
+  )
 
-# Plot ground truth vs. reconstructed physical solution vs. closest train sample
-fig, axes = plt.subplots(2, 2, figsize=(11, 9))
+  U_train_closest = reconstruct_full_solution(
+      y_train_S, train_is_bnd_mask, rom_data, n_subx=n_subx, n_suby=n_suby
+  )
 
-im0 = axes[0, 0].imshow(U_true_full, origin="lower", cmap="viridis")
-axes[0, 0].set_title(f"True Solution (Test Sample {sample_idx})")
-fig.colorbar(im0, ax=axes[0, 0])
+  rel_train_error = np.linalg.norm(U_train_closest - U_true_full) / (
+      np.linalg.norm(U_true_full) + 1e-15
+  )
+  print(
+      f"Closest Train Sample Physical Field Relative Error: {rel_train_error:.4e}"
+  )
 
-im1 = axes[0, 1].imshow(U_pred_full, origin="lower", cmap="viridis")
-axes[0, 1].set_title("Reconstructed Prediction")
-fig.colorbar(im1, ax=axes[0, 1])
+  # 2x2 Grid Plot (4 panels)
+  fig, axes = plt.subplots(2, 2, figsize=(11, 9))
 
-im2 = axes[1, 0].imshow(U_train_closest, origin="lower", cmap="viridis")
-axes[1, 0].set_title(f"Closest Train Sample (ID: {best_sample_id})")
-fig.colorbar(im2, ax=axes[1, 0])
+  im0 = axes[0, 0].imshow(U_true_full, origin="lower", cmap="viridis")
+  axes[0, 0].set_title(f"True Solution (Test Sample {sample_idx})")
+  fig.colorbar(im0, ax=axes[0, 0])
 
-im3 = axes[1, 1].imshow(abs_error_grid, origin="lower", cmap="magma")
-axes[1, 1].set_title(f"Abs Error | Pred vs True (Rel Err: {rel_error_physical:.2e})")
-fig.colorbar(im3, ax=axes[1, 1])
+  im1 = axes[0, 1].imshow(U_pred_full, origin="lower", cmap="viridis")
+  axes[0, 1].set_title(f"Reconstructed Prediction ({interior_init_mode})")
+  fig.colorbar(im1, ax=axes[0, 1])
 
+  im2 = axes[1, 0].imshow(U_train_closest, origin="lower", cmap="viridis")
+  axes[1, 0].set_title(
+      f"Closest Train Sample (ID: {best_sample_id}, Rel Err:"
+      f" {rel_train_error:.2e})"
+  )
+  fig.colorbar(im2, ax=axes[1, 0])
+
+  im3 = axes[1, 1].imshow(abs_error_grid, origin="lower", cmap="magma")
+  axes[1, 1].set_title(
+      f"Abs Error | Pred vs True (Rel Err: {rel_error_physical:.2e})"
+  )
+  fig.colorbar(im3, ax=axes[1, 1])
+
+  for ax in axes.flat:
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+
+else:
+  # 1x3 Row Plot (3 panels) for all other initialization modes
+  fig, axes = plt.subplots(1, 3, figsize=(16, 4.5))
+
+  im0 = axes[0].imshow(U_true_full, origin="lower", cmap="viridis")
+  axes[0].set_title(f"True Solution (Test Sample {sample_idx})")
+  fig.colorbar(im0, ax=axes[0])
+
+  im1 = axes[1].imshow(U_pred_full, origin="lower", cmap="viridis")
+  axes[1].set_title(f"Reconstructed Prediction ({interior_init_mode})")
+  fig.colorbar(im1, ax=axes[1])
+
+  im2 = axes[2].imshow(abs_error_grid, origin="lower", cmap="magma")
+  axes[2].set_title(
+      f"Abs Error | Pred vs True (Rel Err: {rel_error_physical:.2e})"
+  )
+  fig.colorbar(im2, ax=axes[2])
+
+  for ax in axes:
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+
+os.makedirs("Plots", exist_ok=True)
 plt.tight_layout()
-plt.savefig("Plots/Inference8Result.pdf", dpi=300)
+plt.savefig(f"Plots/Inference8Result_{interior_init_mode}.pdf", dpi=300)
 plt.show()
 

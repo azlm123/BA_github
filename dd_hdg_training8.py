@@ -56,7 +56,7 @@ class DD_HDG_Trainer(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dims=(64, 128, 64, 32)):
         super(DD_HDG_Trainer, self).__init__()
         layers = []
-        activation = nn.ReLU()
+        activation = nn.SiLU()
         if len(hidden_dims) > 0:
             layers.append(nn.Linear(input_dim, hidden_dims[0]))
             layers.append(activation)

@@ -243,10 +243,10 @@ def run_hyperparameter_study(mode="training6", num_epochs=150):
 
     # Define Hyperparameter Search Space
     param_grid = {
-        'hidden_dims': [(64, 32), (128, 64), (64, 128, 64, 32), (128, 128, 128)],
-        'lr': [1e-2, 5e-3, 1e-3],
+        'hidden_dims': [(128, 64), (64, 128, 64, 32), (128, 128, 128)],
+        'lr': [1e-2, 1e-3],
         'batch_size': [32, 64, 128],
-        'activation': ['silu', 'relu'],
+        'activation': ['silu','relu'],
         'weight_decay': [5e-4]
     }
 
