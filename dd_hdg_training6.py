@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler
 from dd_hdg_SVD import reconstruct_from_rom
 
 # Device Configuration
@@ -79,24 +80,28 @@ def relative_error(y_true, y_pred):
     return norm_diff / (norm_true + 1e-15)
 
 
+def harmonize_df(df):
+    """Normalize subdomain feature prefix names if multiple indices exist."""
+    return df.rename(columns=lambda x: x.replace('F_sub_1_', 'F_sub_').replace('U_sub_1_', 'U_sub_')
+                                       .replace('F_sub_2_', 'F_sub_').replace('U_sub_2_', 'U_sub_'))
+
+
 # =============================================================================
 # 2. DYNAMIC DATA LOADING & COLUMN PARSING
 # =============================================================================
 
 def extract_features_and_targets(df: pd.DataFrame, operator: str, flux_direction: str = None):
     """Dynamically parse input features (F_sub, U_face, U_corners) and targets (U_sub or J_face)."""
-    # 1. Identify input feature columns
+    # 1. Feature columns
     f_e_cols = [c for c in df.columns if 'F_sub_' in c and 'mode_' in c]
     u_f_cols = [c for c in df.columns if 'U_face_' in c and 'mode_' in c]
     u_v_cols = [c for c in df.columns if 'U_corners_' in c and 'mode_' in c]
-    
-    # Boundary flags
     bnd_flag_cols = [c for c in df.columns if ('U_face_' in c or 'U_corners_' in c) and '_is_bnd' in c]
 
     feature_cols = f_e_cols + u_f_cols + u_v_cols + bnd_flag_cols
     X = df[feature_cols].values
 
-    # 2. Identify target columns based on operator type
+    # 2. Target columns
     if operator == 'solution':
         target_cols = [c for c in df.columns if 'U_sub_' in c and 'mode_' in c]
     elif operator == 'flux':
@@ -112,9 +117,8 @@ def extract_features_and_targets(df: pd.DataFrame, operator: str, flux_direction
 
 def load_dataset_split(operator: str, domain_type: str = None, flux_direction: str = None):
     """
-    Load pre-split CSV files.
-    - Solution operators: train separately on 'internal' or 'boundary' domain files without row filtering.
-    - Flux operators: concatenate internal + boundary dataset CSV files and filter entries where U_face_{flux_direction}_is_bnd == 0.
+    - Solution operators: train separately on 'internal' or 'boundary' domains.
+    - Flux operators: concatenate internal + boundary datasets and keep internal faces only (is_bnd == 0).
     """
     if operator == 'solution':
         if domain_type not in ['internal', 'boundary']:
@@ -128,15 +132,15 @@ def load_dataset_split(operator: str, domain_type: str = None, flux_direction: s
             if not os.path.exists(f):
                 raise FileNotFoundError(f"Missing required dataset file: {f}.")
 
-        df_train = pd.read_csv(train_file)
-        df_val = pd.read_csv(val_file)
-        df_test = pd.read_csv(test_file)
+        df_train = harmonize_df(pd.read_csv(train_file))
+        df_val = harmonize_df(pd.read_csv(val_file))
+        df_test = harmonize_df(pd.read_csv(test_file))
 
     elif operator == 'flux':
         if flux_direction is None:
             raise ValueError("flux_direction must be provided for flux operators")
 
-        # Load both internal and boundary dataset split CSV files
+        # Combine datasets from both domains
         df_train_int = harmonize_df(pd.read_csv("Bases/dataset_operator_internal_train.csv"))
         df_train_bnd = harmonize_df(pd.read_csv("Bases/dataset_operator_boundary_train.csv"))
         df_train = pd.concat([df_train_int, df_train_bnd], ignore_index=True)
@@ -149,11 +153,12 @@ def load_dataset_split(operator: str, domain_type: str = None, flux_direction: s
         df_test_bnd = harmonize_df(pd.read_csv("Bases/dataset_operator_boundary_test.csv"))
         df_test = pd.concat([df_test_int, df_test_bnd], ignore_index=True)
 
-        # Filter to extract only entries where flux face is non-boundary (is_u_face_bnd == 0)
+        # Filter strictly for internal faces
         bnd_col = f"U_face_{flux_direction}_is_bnd"
-        df_train = df_train[df_train[bnd_col] == 0].reset_index(drop=True)
-        df_val = df_val[df_val[bnd_col] == 0].reset_index(drop=True)
-        df_test = df_test[df_test[bnd_col] == 0].reset_index(drop=True)
+        if bnd_col in df_train.columns:
+            df_train = df_train[df_train[bnd_col] == 0].reset_index(drop=True)
+            df_val = df_val[df_val[bnd_col] == 0].reset_index(drop=True)
+            df_test = df_test[df_test[bnd_col] == 0].reset_index(drop=True)
 
     else:
         raise ValueError(f"Unknown operator: {operator}")
@@ -162,8 +167,7 @@ def load_dataset_split(operator: str, domain_type: str = None, flux_direction: s
     X_val, y_val, _, _ = extract_features_and_targets(df_val, operator, flux_direction)
     X_test, y_test, _, _ = extract_features_and_targets(df_test, operator, flux_direction)
 
-    # Apply Standard Scalers (fit on train set only)
-    from sklearn.preprocessing import StandardScaler
+    # Standard Scalers (fit on training set only)
     x_scaler = StandardScaler()
     X_train = x_scaler.fit_transform(X_train)
     X_val = x_scaler.transform(X_val)
@@ -174,7 +178,7 @@ def load_dataset_split(operator: str, domain_type: str = None, flux_direction: s
     y_val = y_scaler.transform(y_val)
     y_test = y_scaler.transform(y_test)
 
-    # Convert to PyTorch Tensors
+    # PyTorch Tensors
     X_train = torch.tensor(X_train, dtype=torch.float32).to(device)
     y_train = torch.tensor(y_train, dtype=torch.float32).to(device)
     X_val = torch.tensor(X_val, dtype=torch.float32).to(device)
@@ -216,9 +220,7 @@ def validation_loop(dataloader, model, loss_fn):
             loss = loss_fn(pred, y)
             total_loss += loss.item()
     return total_loss / len(dataloader)
-def harmonize_df(df):
-    return df.rename(columns=lambda x: x.replace('F_sub_1_', 'F_sub_').replace('U_sub_1_', 'U_sub_')
-                                       .replace('F_sub_2_', 'F_sub_').replace('U_sub_2_', 'U_sub_'))
+
 
 # =============================================================================
 # 4. SINGLE MODEL TRAINER FUNCTION
@@ -238,7 +240,9 @@ def train_single_operator(operator: str, domain_type: str = None, flux_direction
 
     # 1. Load Data
     (X_tr, y_tr, X_va, y_va, X_te, y_te, 
-     x_scaler, y_scaler, in_dim, out_dim) = load_dataset_split(operator=operator, domain_type=domain_type, flux_direction=flux_direction)
+     x_scaler, y_scaler, in_dim, out_dim) = load_dataset_split(
+        operator=operator, domain_type=domain_type, flux_direction=flux_direction
+    )
 
     print(f"input_dim: {in_dim} | output_dim: {out_dim}")
 
@@ -271,7 +275,8 @@ def train_single_operator(operator: str, domain_type: str = None, flux_direction
         if (epoch + 1) % 30 == 0 or epoch == num_epochs - 1:
             curr_lr = optimizer.param_groups[0]['lr']
             print(f"  Epoch {epoch+1:3d}/{num_epochs} | Train Loss: {tr_loss:.6f} | Val Loss: {va_loss:.6f} | LR: {curr_lr:.2e}")
-    # --- Plot Loss Evolution ---
+
+    # Plot Loss Evolution
     os.makedirs("Plots", exist_ok=True)
     plot_path = os.path.join("Plots", f"{model_name}_loss_evolution.pdf")
     
@@ -303,7 +308,7 @@ def train_single_operator(operator: str, domain_type: str = None, flux_direction
     y_pred = y_scaler.inverse_transform(y_pred_norm)
     y_true = y_scaler.inverse_transform(y_true_norm)
 
-    # Load POD Basis for physical field reconstruction
+    # Load POD Basis
     npz_basis_path = "Bases/hdg_rom_bases.npz"
     if os.path.exists(npz_basis_path):
         rom_data = np.load(npz_basis_path)
@@ -347,25 +352,25 @@ def main():
 
     print("Starting Training Pipeline for 6 Operators (2 Solution: internal/boundary, 4 Internal Fluxes)...")
     
-    # 1. Train Solution Operator for Internal Elements
+    # 1. Solution Operator for Internal Subdomains
     test_loss, rel_err = train_single_operator(
         operator='solution',
         domain_type='internal',
         hidden_dims=(128, 64),
         num_epochs=300
     )
-    results.append({"model": "S_internal", "test_mse": test_loss, "rel_error": rel_err})
+    results.append({"model": "S_internal6", "test_mse": test_loss, "rel_error": rel_err})
 
-    # 2. Train Solution Operator for Boundary Elements
+    # 2. Solution Operator for Boundary Subdomains
     test_loss, rel_err = train_single_operator(
         operator='solution',
         domain_type='boundary',
         hidden_dims=(128, 64),
         num_epochs=300
     )
-    results.append({"model": "S_boundary", "test_mse": test_loss, "rel_error": rel_err})
+    results.append({"model": "S_boundary6", "test_mse": test_loss, "rel_error": rel_err})
 
-    # 3. Train 4 Directional Internal Flux Operators (combining datasets & filtering for is_u_face_bnd == 0)
+    # 3. Four Directional Internal Flux Operators (combining datasets & filtering for is_u_face_bnd == 0)
     flux_directions = ["bottom", "right", "top", "left"]
     for f_dir in flux_directions:
         test_loss, rel_err = train_single_operator(
@@ -374,7 +379,7 @@ def main():
             hidden_dims=(128, 64),
             num_epochs=100
         )
-        results.append({"model": f"F_internal_{f_dir}", "test_mse": test_loss, "rel_error": rel_err})
+        results.append({"model": f"F_internal6_{f_dir}", "test_mse": test_loss, "rel_error": rel_err})
 
     # Summary Output Table
     print("\n" + "=" * 80)
@@ -382,15 +387,11 @@ def main():
     print("=" * 80)
     df_res = pd.DataFrame(results)
     print(df_res.to_string(index=False))
-    # ==========================================
-    # 📊 Create & Save Bar Chart (Balkendiagramm)
-    # ==========================================
 
-    # 1. Ensure the 'Plots' directory exists
+    # Create & Save Bar Chart
     plot_dir = "Plots"
     os.makedirs(plot_dir, exist_ok=True)
 
-    # 2. Setup figure with 2 subplots (Test MSE & Relative Error)
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
     # Subplot 1: Test MSE
@@ -400,7 +401,6 @@ def main():
     axes[0].set_xticklabels(df_res["model"], rotation=30, ha="right")
     axes[0].grid(axis="y", linestyle="--", alpha=0.7)
 
-    # Add value labels on top of bars
     for bar in bars1:
         yval = bar.get_height()
         axes[0].text(
@@ -419,21 +419,18 @@ def main():
     axes[1].set_xticklabels(df_res["model"], rotation=30, ha="right")
     axes[1].grid(axis="y", linestyle="--", alpha=0.7)
 
-    # Add value labels on top of bars
     for bar in bars2:
         yval = bar.get_height()
         axes[1].text(
             bar.get_x() + bar.get_width() / 2,
             yval,
-            f"{yval:.2e}" if yval < 0.01 else f"{yval:.4f}",
+            f"{yval:.2e}" if yval is not None and yval < 0.01 else (f"{yval:.4f}" if yval is not None else "N/A"),
             ha="center",
             va="bottom",
             fontsize=9,
         )
 
     plt.tight_layout()
-
-    # 3. Save plot into Plots/
     save_path = os.path.join(plot_dir, "operator_training6_summary.pdf")
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.close()

@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler
 from dd_hdg_SVD import reconstruct_from_rom
 
 # Device Configuration
@@ -56,7 +57,7 @@ class DD_HDG_Trainer(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dims=(64, 128, 64, 32)):
         super(DD_HDG_Trainer, self).__init__()
         layers = []
-        activation = nn.ReLU()
+        activation = nn.SiLU()
         if len(hidden_dims) > 0:
             layers.append(nn.Linear(input_dim, hidden_dims[0]))
             layers.append(activation)
@@ -79,59 +80,85 @@ def relative_error(y_true, y_pred):
     return norm_diff / (norm_true + 1e-15)
 
 
+def harmonize_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize subdomain feature column names to avoid feature explosion."""
+    return df.rename(columns=lambda x: x.replace('F_sub_1_', 'F_sub_').replace('U_sub_1_', 'U_sub_')
+                                       .replace('F_sub_2_', 'F_sub_').replace('U_sub_2_', 'U_sub_'))
+
+
 # =============================================================================
 # 2. DYNAMIC DATA LOADING & COLUMN PARSING
 # =============================================================================
 
-def extract_features_and_targets(df: pd.DataFrame, operator: str, flux_direction: str = None):
-    """Dynamically parse input features (F_sub, U_face, U_corners) and targets (U_sub or J_face)."""
-    # 1. Identify input feature columns
-    f_e_cols = [c for c in df.columns if 'F_sub_' in c and 'mode_' in c]
-    u_f_cols = [c for c in df.columns if 'U_face_' in c and 'mode_' in c]
-    u_v_cols = [c for c in df.columns if 'U_corners_' in c and 'mode_' in c]
-    
-    # Optional: include boundary flags if present (useful for boundary operator)
-    bnd_flag_cols = [c for c in df.columns if ('U_face_' in c  or 'U_corners_' in c)and '_is_bnd' in c]
+def extract_features_and_targets(df: pd.DataFrame, operator: str, flux_direction: str = None, boundary_filter: str = None):
+    """
+    Extract features and targets with directional face-level filtering.
+    boundary_filter:
+      - 'internal_only': Keep samples where target face is internal (is_bnd == 0)
+      - 'boundary_only': Keep samples where target face is boundary (is_bnd == 1)
+    """
+    df_filtered = df.copy()
 
-    print(f"Feature Columns: {len(f_e_cols)} F_sub | {len(u_f_cols)} U_face | {len(u_v_cols)} U_corners | {len(bnd_flag_cols)} Boundary Flags")
-    
+    # Apply directional face-level filtering for flux operators
+    if boundary_filter and flux_direction:
+        bnd_col = f"U_face_{flux_direction}_is_bnd"
+        if bnd_col in df_filtered.columns:
+            if boundary_filter == "boundary_only":
+                df_filtered = df_filtered[df_filtered[bnd_col] == 1].reset_index(drop=True)
+            elif boundary_filter == "internal_only":
+                df_filtered = df_filtered[df_filtered[bnd_col] == 0].reset_index(drop=True)
+
+    # 1. Feature columns
+    f_e_cols = [c for c in df_filtered.columns if 'F_sub_' in c and 'mode_' in c]
+    u_f_cols = [c for c in df_filtered.columns if 'U_face_' in c and 'mode_' in c]
+    u_v_cols = [c for c in df_filtered.columns if 'U_corners_' in c and 'mode_' in c]
+    bnd_flag_cols = [c for c in df_filtered.columns if ('U_face_' in c or 'U_corners_' in c) and '_is_bnd' in c]
+
     feature_cols = f_e_cols + u_f_cols + u_v_cols + bnd_flag_cols
-    X = df[feature_cols].values
+    X = df_filtered[feature_cols].values
 
-    # 2. Identify target columns based on operator type
     if operator == 'solution':
-        target_cols = [c for c in df.columns if 'U_sub_' in c and 'mode_' in c]
+        target_cols = [c for c in df_filtered.columns if 'U_sub_' in c and 'mode_' in c]
     elif operator == 'flux':
         if flux_direction is None:
             raise ValueError("flux_direction must be specified when operator='flux'")
-        target_cols = [c for c in df.columns if f'J_face_{flux_direction}_' in c and 'mode_' in c]
+        target_cols = [c for c in df_filtered.columns if f'J_face_{flux_direction}_' in c and 'mode_' in c]
     else:
         raise ValueError(f"Unknown operator type: {operator}")
 
-    y = df[target_cols].values
+    y = df_filtered[target_cols].values
     return X, y, len(feature_cols), len(target_cols)
 
 
 def load_dataset_split(domain_type: str, operator: str, flux_direction: str = None):
-    """Load pre-split CSV files for train, val, and test datasets."""
-    train_file = f"Bases/dataset_operator_{domain_type}_train.csv"
-    val_file = f"Bases/dataset_operator_{domain_type}_val.csv"
-    test_file = f"Bases/dataset_operator_{domain_type}_test.csv"
+    """
+    Load data splits based on domain and operator:
+    - S_int: Internal dataset only
+    - S_bnd: Boundary dataset only
+    - F_int: Concatenate internal + boundary CSVs, filter target face for is_bnd == 0
+    - F_bnd: Boundary CSV, filter target face for is_bnd == 1
+    """
+    def read_split(split):
+        if operator == 'flux' and domain_type == 'internal':
+            df_int = harmonize_df(pd.read_csv(f"Bases/dataset_operator_internal_{split}.csv"))
+            df_bnd = harmonize_df(pd.read_csv(f"Bases/dataset_operator_boundary_{split}.csv"))
+            return pd.concat([df_int, df_bnd], axis=0, ignore_index=True)
+        else:
+            return harmonize_df(pd.read_csv(f"Bases/dataset_operator_{domain_type}_{split}.csv"))
 
-    for f in [train_file, val_file, test_file]:
-        if not os.path.exists(f):
-            raise FileNotFoundError(f"Missing required dataset file: {f}. Run database script first.")
+    df_train = read_split("train")
+    df_val = read_split("val")
+    df_test = read_split("test")
 
-    df_train = pd.read_csv(train_file)
-    df_val = pd.read_csv(val_file)
-    df_test = pd.read_csv(test_file)
+    bnd_filter = None
+    if operator == 'flux':
+        bnd_filter = 'boundary_only' if domain_type == 'boundary' else 'internal_only'
 
-    X_train, y_train, input_dim, output_dim = extract_features_and_targets(df_train, operator, flux_direction)
-    X_val, y_val, _, _ = extract_features_and_targets(df_val, operator, flux_direction)
-    X_test, y_test, _, _ = extract_features_and_targets(df_test, operator, flux_direction)
+    X_train, y_train, input_dim, output_dim = extract_features_and_targets(df_train, operator, flux_direction, bnd_filter)
+    X_val, y_val, _, _ = extract_features_and_targets(df_val, operator, flux_direction, bnd_filter)
+    X_test, y_test, _, _ = extract_features_and_targets(df_test, operator, flux_direction, bnd_filter)
 
-    # Apply Standard Scalers (fit on train set only)
-    from sklearn.preprocessing import StandardScaler
+    # Standard Scalers (fit on training set only)
     x_scaler = StandardScaler()
     X_train = x_scaler.fit_transform(X_train)
     X_val = x_scaler.transform(X_val)
@@ -142,7 +169,7 @@ def load_dataset_split(domain_type: str, operator: str, flux_direction: str = No
     y_val = y_scaler.transform(y_val)
     y_test = y_scaler.transform(y_test)
 
-    # Convert to PyTorch Tensors
+    # PyTorch Tensors
     X_train = torch.tensor(X_train, dtype=torch.float32).to(device)
     y_train = torch.tensor(y_train, dtype=torch.float32).to(device)
     X_val = torch.tensor(X_val, dtype=torch.float32).to(device)
@@ -152,7 +179,6 @@ def load_dataset_split(domain_type: str, operator: str, flux_direction: str = No
 
     return (X_train, y_train, X_val, y_val, X_test, y_test, 
             x_scaler, y_scaler, input_dim, output_dim)
-
 
 # =============================================================================
 # 3. TRAINING & VALIDATION LOOPS
@@ -191,8 +217,7 @@ def validation_loop(dataloader, model, loss_fn):
 # =============================================================================
 
 def train_single_operator(domain_type: str, operator: str, flux_direction: str = None, 
-                          batch_size=64, lr=1e-2, hidden_dims=(64, 128, 64, 32)):
-    """Train a single NN operator model, save artifacts, and evaluate reconstruction error."""
+                          batch_size=64, lr=1e-2, hidden_dims=(64, 128, 64, 32), num_epochs=NUM_EPOCHS):
     model_name = f"{operator}_{domain_type}8" + (f"_{flux_direction}" if flux_direction else "")
     print("\n" + "=" * 80)
     print(f"TRAINING OPERATOR: {model_name.upper()}")
@@ -210,13 +235,13 @@ def train_single_operator(domain_type: str, operator: str, flux_direction: str =
 
     # 2. Instantiate Model
     model = DD_HDG_Trainer(input_dim=in_dim, output_dim=out_dim, hidden_dims=hidden_dims).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=5e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=5e-4)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
     early_stopper = EarlyStopper(tolerance=8) if USER_EARLY_STOPPER else None
 
     # 3. Training Loop
     train_losses, val_losses = [], []
-    for epoch in range(NUM_EPOCHS):
+    for epoch in range(num_epochs):
         tr_loss = train_loop(train_loader, model, LOSS_FN, optimizer)
         va_loss = validation_loop(val_loader, model, LOSS_FN)
 
@@ -230,11 +255,11 @@ def train_single_operator(domain_type: str, operator: str, flux_direction: str =
         else:
             scheduler.step(va_loss)
 
-        if (epoch + 1) % 30 == 0 or epoch == NUM_EPOCHS - 1:
+        if (epoch + 1) % 30 == 0 or epoch == num_epochs - 1:
             curr_lr = optimizer.param_groups[0]['lr']
-            print(f"  Epoch {epoch+1:3d}/{NUM_EPOCHS} | Train Loss: {tr_loss:.6f} | Val Loss: {va_loss:.6f} | LR: {curr_lr:.2e}")
+            print(f"  Epoch {epoch+1:3d}/{num_epochs} | Train Loss: {tr_loss:.6f} | Val Loss: {va_loss:.6f} | LR: {curr_lr:.2e}")
 
-    # --- Plot Loss Evolution ---
+    # Plot Loss Evolution
     os.makedirs("Plots", exist_ok=True)
     plot_path = os.path.join("Plots", f"{model_name}_loss_evolution.pdf")
     
@@ -266,8 +291,7 @@ def train_single_operator(domain_type: str, operator: str, flux_direction: str =
     y_pred = y_scaler.inverse_transform(y_pred_norm)
     y_true = y_scaler.inverse_transform(y_true_norm)
 
-    # Load DOMAIN-SPECIFIC POD Basis for physical field reconstruction
-    npz_basis_path ="Bases/hdg_rom_bases.npz"
+    npz_basis_path = "Bases/hdg_rom_bases.npz"
     if os.path.exists(npz_basis_path):
         rom_data = np.load(npz_basis_path)
         if operator == 'solution':
@@ -310,24 +334,26 @@ def main():
     print("Starting Training Pipeline for 10 Operator Models...")
     
     for domain in domains:
-        # 1. Train Solution Operator S for this domain
+        # 1. Solution Operator S
         test_loss, rel_err = train_single_operator(
             domain_type=domain,
             operator='solution',
             flux_direction=None,
-            hidden_dims=(64, 32)
+            hidden_dims=(64, 32),
+            num_epochs=300
         )
-        results.append({"model": f"S_{domain}", "test_mse": test_loss, "rel_error": rel_err})
+        results.append({"model": f"S_{domain}8", "test_mse": test_loss, "rel_error": rel_err})
 
-        # 2. Train 4 Directional Flux Operators F for this domain
+        # 2. Four Directional Flux Operators F
         for f_dir in flux_directions:
             test_loss, rel_err = train_single_operator(
                 domain_type=domain,
                 operator='flux',
                 flux_direction=f_dir,
-                hidden_dims=(64, 128, 64, 32)
+                hidden_dims=(64, 128, 64, 32),
+                num_epochs=120
             )
-            results.append({"model": f"F_{domain}_{f_dir}", "test_mse": test_loss, "rel_error": rel_err})
+            results.append({"model": f"F_{domain}8_{f_dir}", "test_mse": test_loss, "rel_error": rel_err})
 
     # Summary Output Table
     print("\n" + "=" * 80)
@@ -335,25 +361,21 @@ def main():
     print("=" * 80)
     df_res = pd.DataFrame(results)
     print(df_res.to_string(index=False))
-    # ==========================================
-    # 📊 Create & Save Bar Chart (Balkendiagramm)
-    # ==========================================
 
-    # 1. Ensure the 'Plots' directory exists
+    # Create & Save Bar Chart
     plot_dir = "Plots"
     os.makedirs(plot_dir, exist_ok=True)
 
-    # 2. Setup figure with 2 subplots (Test MSE & Relative Error)
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
     # Subplot 1: Test MSE
     bars1 = axes[0].bar(df_res["model"], df_res["test_mse"], color="steelblue", edgecolor="black")
     axes[0].set_title("Test MSE by Operator", fontsize=13, fontweight="bold")
     axes[0].set_ylabel("MSE Loss")
+    axes[0].set_xticks(range(len(df_res["model"])))
     axes[0].set_xticklabels(df_res["model"], rotation=30, ha="right")
     axes[0].grid(axis="y", linestyle="--", alpha=0.7)
 
-    # Add value labels on top of bars
     for bar in bars1:
         yval = bar.get_height()
         axes[0].text(
@@ -362,35 +384,32 @@ def main():
             f"{yval:.2e}",
             ha="center",
             va="bottom",
-            fontsize=9,
+            fontsize=8,
         )
 
     # Subplot 2: Relative Error
     bars2 = axes[1].bar(df_res["model"], df_res["rel_error"], color="coral", edgecolor="black")
     axes[1].set_title("Relative Error by Operator", fontsize=13, fontweight="bold")
     axes[1].set_ylabel("Relative Error")
+    axes[1].set_xticks(range(len(df_res["model"])))
     axes[1].set_xticklabels(df_res["model"], rotation=30, ha="right")
     axes[1].grid(axis="y", linestyle="--", alpha=0.7)
 
-    # Add value labels on top of bars
     for bar in bars2:
         yval = bar.get_height()
         axes[1].text(
             bar.get_x() + bar.get_width() / 2,
             yval,
-            f"{yval:.2e}" if yval < 0.01 else f"{yval:.4f}",
+            f"{yval:.2e}" if yval is not None and yval < 0.01 else (f"{yval:.4f}" if yval is not None else "N/A"),
             ha="center",
             va="bottom",
-            fontsize=9,
+            fontsize=8,
         )
 
     plt.tight_layout()
-
-    # 3. Save plot into Plots/
     save_path = os.path.join(plot_dir, "operator_training8_summary.pdf")
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.close()
-
     print(f"\n[INFO] Bar chart successfully saved to: {save_path}")
 
 

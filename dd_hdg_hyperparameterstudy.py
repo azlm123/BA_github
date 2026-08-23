@@ -60,7 +60,7 @@ def relative_error(y_true, y_pred):
     return norm_diff / (norm_true + 1e-15)
 
 
-def harmonize_df(df):
+def harmonize_df(df: pd.DataFrame) -> pd.DataFrame:
     """Align column names across internal and boundary data splits."""
     return df.rename(columns=lambda x: x.replace('F_sub_1_', 'F_sub_').replace('U_sub_1_', 'U_sub_')
                                        .replace('F_sub_2_', 'F_sub_').replace('U_sub_2_', 'U_sub_'))
@@ -70,80 +70,93 @@ def harmonize_df(df):
 # 2. DATA EXTRACTION & LOADING
 # =============================================================================
 
-def extract_features_and_targets(df: pd.DataFrame, operator: str, flux_direction: str = None):
-    """Dynamically parse input features (F_sub, U_face, U_corners) and targets (U_sub or J_face)."""
-    f_e_cols = [c for c in df.columns if 'F_sub_' in c and 'mode_' in c]
-    u_f_cols = [c for c in df.columns if 'U_face_' in c and 'mode_' in c]
-    u_v_cols = [c for c in df.columns if 'U_corners_' in c and 'mode_' in c]
-    bnd_flag_cols = [c for c in df.columns if ('U_face_' in c or 'U_corners_' in c) and '_is_bnd' in c]
+def extract_features_and_targets(df: pd.DataFrame, operator: str, flux_direction: str = None, boundary_filter: str = None):
+    """
+    Extract features and targets with directional face-level boundary filtering.
+    boundary_filter:
+      - 'internal_only': Keep samples where target face is internal (is_bnd == 0)
+      - 'boundary_only': Keep samples where target face is boundary (is_bnd == 1)
+    """
+    df_filtered = df.copy()
+
+    # Apply directional face-level filtering for flux operators
+    if boundary_filter and flux_direction:
+        bnd_col = f"U_face_{flux_direction}_is_bnd"
+        if bnd_col in df_filtered.columns:
+            if boundary_filter == "boundary_only":
+                df_filtered = df_filtered[df_filtered[bnd_col] == 1].reset_index(drop=True)
+            elif boundary_filter == "internal_only":
+                df_filtered = df_filtered[df_filtered[bnd_col] == 0].reset_index(drop=True)
+
+    # 1. Feature columns
+    f_e_cols = [c for c in df_filtered.columns if 'F_sub_' in c and 'mode_' in c]
+    u_f_cols = [c for c in df_filtered.columns if 'U_face_' in c and 'mode_' in c]
+    u_v_cols = [c for c in df_filtered.columns if 'U_corners_' in c and 'mode_' in c]
+    bnd_flag_cols = [c for c in df_filtered.columns if ('U_face_' in c or 'U_corners_' in c) and '_is_bnd' in c]
 
     feature_cols = f_e_cols + u_f_cols + u_v_cols + bnd_flag_cols
-    X = df[feature_cols].values
+    X = df_filtered[feature_cols].values
 
+    # 2. Target columns
     if operator == 'solution':
-        target_cols = [c for c in df.columns if 'U_sub_' in c and 'mode_' in c]
+        target_cols = [c for c in df_filtered.columns if 'U_sub_' in c and 'mode_' in c]
     elif operator == 'flux':
         if flux_direction is None:
             raise ValueError("flux_direction must be specified when operator='flux'")
-        target_cols = [c for c in df.columns if f'J_face_{flux_direction}_' in c and 'mode_' in c]
+        target_cols = [c for c in df_filtered.columns if f'J_face_{flux_direction}_' in c and 'mode_' in c]
     else:
         raise ValueError(f"Unknown operator type: {operator}")
 
-    y = df[target_cols].values
+    y = df_filtered[target_cols].values
     return X, y, len(feature_cols), len(target_cols)
 
 
 def load_dataset(mode: str, operator: str, domain_type: str = None, flux_direction: str = None):
     """
-    Unified dataset loader:
-    - mode='training6': 2 solution operators (int/bnd) + 4 internal flux operators (merged & non-bnd filtered).
-    - mode='training8': 2 solution operators + 8 directional flux operators (domain-specific).
+    Unified dataset loader compatible with training6 and training8 setups:
+    - mode='training6':
+        * Solution: load from respective domain file.
+        * Flux: concat internal + boundary, filter target face for is_bnd == 0.
+    - mode='training8':
+        * Solution: load from respective domain file.
+        * Flux (internal): concat internal + boundary, filter target face for is_bnd == 0.
+        * Flux (boundary): load boundary dataset, filter target face for is_bnd == 1.
     """
-    if mode == 'training6':
-        if operator == 'solution':
-            train_file = f"Bases/dataset_operator_{domain_type}_train.csv"
-            val_file = f"Bases/dataset_operator_{domain_type}_val.csv"
-            test_file = f"Bases/dataset_operator_{domain_type}_test.csv"
-            df_train = pd.read_csv(train_file)
-            df_val = pd.read_csv(val_file)
-            df_test = pd.read_csv(test_file)
-        elif operator == 'flux':
-            df_train = pd.concat([harmonize_df(pd.read_csv("Bases/dataset_operator_internal_train.csv")),
-                                  harmonize_df(pd.read_csv("Bases/dataset_operator_boundary_train.csv"))], ignore_index=True)
-            df_val = pd.concat([harmonize_df(pd.read_csv("Bases/dataset_operator_internal_val.csv")),
-                                harmonize_df(pd.read_csv("Bases/dataset_operator_boundary_val.csv"))], ignore_index=True)
-            df_test = pd.concat([harmonize_df(pd.read_csv("Bases/dataset_operator_internal_test.csv")),
-                                 harmonize_df(pd.read_csv("Bases/dataset_operator_boundary_test.csv"))], ignore_index=True)
-            bnd_col = f"U_face_{flux_direction}_is_bnd"
-            df_train = df_train[df_train[bnd_col] == 0].reset_index(drop=True)
-            df_val = df_val[df_val[bnd_col] == 0].reset_index(drop=True)
-            df_test = df_test[df_test[bnd_col] == 0].reset_index(drop=True)
+    def read_split(split):
+        if (mode == 'training6' and operator == 'flux') or (mode == 'training8' and operator == 'flux' and domain_type == 'internal'):
+            df_int = harmonize_df(pd.read_csv(f"Bases/dataset_operator_internal_{split}.csv"))
+            df_bnd = harmonize_df(pd.read_csv(f"Bases/dataset_operator_boundary_{split}.csv"))
+            return pd.concat([df_int, df_bnd], axis=0, ignore_index=True)
+        else:
+            return harmonize_df(pd.read_csv(f"Bases/dataset_operator_{domain_type}_{split}.csv"))
 
-    elif mode == 'training8':
-        train_file = f"Bases/dataset_operator_{domain_type}_train.csv"
-        val_file = f"Bases/dataset_operator_{domain_type}_val.csv"
-        test_file = f"Bases/dataset_operator_{domain_type}_test.csv"
-        df_train = pd.read_csv(train_file)
-        df_val = pd.read_csv(val_file)
-        df_test = pd.read_csv(test_file)
-    else:
-        raise ValueError(f"Unknown mode: {mode}")
+    df_train = read_split("train")
+    df_val = read_split("val")
+    df_test = read_split("test")
 
-    X_train, y_train, in_dim, out_dim = extract_features_and_targets(df_train, operator, flux_direction)
-    X_val, y_val, _, _ = extract_features_and_targets(df_val, operator, flux_direction)
-    X_test, y_test, _, _ = extract_features_and_targets(df_test, operator, flux_direction)
+    bnd_filter = None
+    if operator == 'flux':
+        if mode == 'training6':
+            bnd_filter = 'internal_only'
+        elif mode == 'training8':
+            bnd_filter = 'boundary_only' if domain_type == 'boundary' else 'internal_only'
 
-    # Normalization
-    x_scaler, y_scaler = StandardScaler(), StandardScaler()
+    X_train, y_train, in_dim, out_dim = extract_features_and_targets(df_train, operator, flux_direction, bnd_filter)
+    X_val, y_val, _, _ = extract_features_and_targets(df_val, operator, flux_direction, bnd_filter)
+    X_test, y_test, _, _ = extract_features_and_targets(df_test, operator, flux_direction, bnd_filter)
+
+    # Standard Scalers (fit on training set only)
+    x_scaler = StandardScaler()
     X_train = x_scaler.fit_transform(X_train)
     X_val = x_scaler.transform(X_val)
     X_test = x_scaler.transform(X_test)
 
+    y_scaler = StandardScaler()
     y_train = y_scaler.fit_transform(y_train)
     y_val = y_scaler.transform(y_val)
     y_test = y_scaler.transform(y_test)
 
-    # Convert to Tensors
+    # PyTorch Tensors
     X_train = torch.tensor(X_train, dtype=torch.float32).to(device)
     y_train = torch.tensor(y_train, dtype=torch.float32).to(device)
     X_val = torch.tensor(X_val, dtype=torch.float32).to(device)
@@ -161,7 +174,6 @@ def load_dataset(mode: str, operator: str, domain_type: str = None, flux_directi
 
 def train_and_eval(X_tr, y_tr, X_va, y_va, X_te, y_te, in_dim, out_dim, y_scaler, 
                    cfg, basis, mean, num_epochs=150):
-    """Executes training with a given hyperparameter configuration and evaluates test error."""
     train_loader = DataLoader(TensorDataset(X_tr, y_tr), batch_size=cfg['batch_size'], shuffle=True)
     val_loader = DataLoader(TensorDataset(X_va, y_va), batch_size=cfg['batch_size'], shuffle=False)
     test_loader = DataLoader(TensorDataset(X_te, y_te), batch_size=cfg['batch_size'], shuffle=False)
@@ -187,7 +199,6 @@ def train_and_eval(X_tr, y_tr, X_va, y_va, X_te, y_te, in_dim, out_dim, y_scaler
             loss.backward()
             optimizer.step()
 
-        # Validation
         model.eval()
         va_loss = 0.0
         with torch.no_grad():
@@ -200,18 +211,15 @@ def train_and_eval(X_tr, y_tr, X_va, y_va, X_te, y_te, in_dim, out_dim, y_scaler
             best_val_loss = va_loss
             best_model_state = copy.deepcopy(model.state_dict())
 
-    # Load Best Checkpoint for Evaluation
     model.load_state_dict(best_model_state)
     model.eval()
     
-    # Test MSE
     test_mse = 0.0
     with torch.no_grad():
         for X_b, y_b in test_loader:
             test_mse += LOSS_FN(model(X_b), y_b).item()
     test_mse /= len(test_loader)
 
-    # Relative Error on Reconstructed Field
     with torch.no_grad():
         y_pred_norm = model(X_te).cpu().numpy()
         y_true_norm = y_te.cpu().numpy()
@@ -234,45 +242,38 @@ def train_and_eval(X_tr, y_tr, X_va, y_va, X_te, y_te, in_dim, out_dim, y_scaler
 # =============================================================================
 
 def run_hyperparameter_study(mode="training6", num_epochs=150):
-    """
-    Executes grid sweep across hyperparameter combinations for each operator in the chosen setup.
-    """
     print("\n" + "=" * 90)
     print(f"STARTING HYPERPARAMETER STUDY FOR SETUP: {mode.upper()}")
     print("=" * 90)
 
-    # Define Hyperparameter Search Space
     param_grid = {
-        'hidden_dims': [(64, 32), (128, 64), (64, 128, 64, 32), (128, 128, 128)],
-        'lr': [1e-2, 5e-3, 1e-3],
-        'batch_size': [32, 64, 128],
+        'hidden_dims': [(64, 32), (64, 128, 64, 32), (128, 128, 128)],
+        'lr': [1e-2, 1e-3],
+        'batch_size': [32, 64],
         'activation': ['silu', 'relu'],
         'weight_decay': [5e-4]
     }
 
-    # Generate all grid combinations
     keys, values = zip(*param_grid.items())
     configurations = [dict(zip(keys, v)) for v in itertools.product(*values)]
     print(f"Total Hyperparameter Configurations per operator: {len(configurations)}")
 
-    # Load POD Basis Archive
     npz_path = "Bases/hdg_rom_bases.npz"
     rom_data = np.load(npz_path) if os.path.exists(npz_path) else {}
 
-    # Define targets to benchmark
     if mode == "training6":
         tasks = [
-            {"name": "S_internal", "operator": "solution", "domain": "internal", "direction": None},
-            {"name": "S_boundary", "operator": "solution", "domain": "boundary", "direction": None},
-            {"name": "F_internal_bottom", "operator": "flux", "domain": None, "direction": "bottom"},
-            {"name": "F_internal_right", "operator": "flux", "domain": None, "direction": "right"},
+            {"name": "S_internal6", "operator": "solution", "domain": "internal", "direction": None},
+            {"name": "S_boundary6", "operator": "solution", "domain": "boundary", "direction": None},
+            {"name": "F_internal6_bottom", "operator": "flux", "domain": None, "direction": "bottom"},
+            {"name": "F_internal6_right", "operator": "flux", "domain": None, "direction": "right"},
         ]
-    else: # training8
+    else:  # training8
         tasks = [
-            {"name": "S_internal", "operator": "solution", "domain": "internal", "direction": None},
-            {"name": "S_boundary", "operator": "solution", "domain": "boundary", "direction": None},
-            {"name": "F_internal_bottom", "operator": "flux", "domain": "internal", "direction": "bottom"},
-            {"name": "F_boundary_bottom", "operator": "flux", "domain": "boundary", "direction": "bottom"},
+            {"name": "S_internal8", "operator": "solution", "domain": "internal", "direction": None},
+            {"name": "S_boundary8", "operator": "solution", "domain": "boundary", "direction": None},
+            {"name": "F_internal8_bottom", "operator": "flux", "domain": "internal", "direction": "bottom"},
+            {"name": "F_boundary8_bottom", "operator": "flux", "domain": "boundary", "direction": "bottom"},
         ]
 
     all_study_results = []
@@ -282,13 +283,11 @@ def run_hyperparameter_study(mode="training6", num_epochs=150):
         print(f"Sweeping Hyperparameters for Operator: {task['name']}")
         print("-" * 70)
 
-        # Load Split Data
         (X_tr, y_tr, X_va, y_va, X_te, y_te, 
          x_scaler, y_scaler, in_dim, out_dim) = load_dataset(
             mode=mode, operator=task['operator'], domain_type=task['domain'], flux_direction=task['direction']
         )
 
-        # Retrieve Basis for Metric
         basis, mean = None, None
         if len(rom_data) > 0:
             if task['operator'] == 'solution':
@@ -329,16 +328,14 @@ def run_hyperparameter_study(mode="training6", num_epochs=150):
 
         print(f"\n >>> Best Config for {task['name']}: {best_cfg} | Best Rel Err: {best_rel_err:.4e}")
 
-    # =========================================================================
-    # 5. EXPORT RESULTS & GENERATE SUMMARY PLOT
-    # =========================================================================
+    # Export CSV
     df_results = pd.DataFrame(all_study_results)
     os.makedirs("Bases", exist_ok=True)
     csv_path = f"Bases/hyperparameter_study_{mode}.csv"
     df_results.to_csv(csv_path, index=False)
     print(f"\n✓ Detailed results saved to '{csv_path}'")
 
-    # Plot Best Result per Operator
+    # Plot Summary Bar Chart
     best_per_op = df_results.loc[df_results.groupby("operator")["rel_error"].idxmin()]
     
     plt.figure(figsize=(10, 5))
@@ -347,7 +344,7 @@ def run_hyperparameter_study(mode="training6", num_epochs=150):
     plt.ylabel("Relative Reconstruction Error (Log Scale)", fontsize=11)
     plt.title(f"Best Relative Error per Operator Across Hyperparameter Search ({mode.upper()})", fontsize=12, fontweight="bold")
     plt.grid(axis="y", linestyle="--", alpha=0.7)
-    plt.xticks(rotation=20, ha="right")
+    plt.xticks(ticks=range(len(best_per_op["operator"])), labels=best_per_op["operator"], rotation=20, ha="right")
 
     for bar in bars:
         yval = bar.get_height()
