@@ -139,7 +139,7 @@ SVD truncation plots are stored in `Plots/`.
 
 These plots show the relative reconstruction error as a function of the truncation rank.
 
-> **Note:** Boundary face values that are identically zero and scalar corner quantities do not require the same SVD truncation analysis as high-dimensional solution and flux fields.
+> **Note:** Boundary face values that are identically zero (for our current problem) and scalar corner quantities do not require the same SVD truncation analysis as high-dimensional solution and flux fields.
 
 ---
 
