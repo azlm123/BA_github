@@ -10,7 +10,7 @@ import torch.nn as nn
 
 from dd_hdg_face_operations import extract_neighbours_indexes
 from dd_hdg_SVD import project_to_rom, reconstruct_from_rom
-from dd_hdg_training8 import DD_HDG_Trainer
+from dd_hdg_training8 import DD_HDG_Trainer ,get_hyperparameters
 
 # =========================================================================
 # DEVICE SETUP & CONFIGURATION
@@ -36,6 +36,7 @@ models_dir = "trained_operators"
 use_non_true_bnd = False
 sample_idx = 10  # test sample index for inference
 run_optimization = True  # whether to run the optimization step after initial inference
+USE_HYPERPARAMS_CSV = False  # whether to use hyperparameters from CSV or default ones
 
 # --- Face/corner initialization ---
 # 'nearest_match'      : seed from the global closest-matching training sample's values
@@ -299,25 +300,34 @@ in_dim = (
     + (4 * latent_corner_dim)
     + x_bnd.shape[1]
 )
-
+csv_hyperpara_path = "Bases/best_hyperpara8.csv" if USE_HYPERPARAMS_CSV else "Bases/default_hyperpara8.csv"
 # Solution Operators
-S_int = load_model("solution_internal8", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=(64, 32))
-S_bnd = load_model("solution_boundary8", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=(64, 32))
+arch, _, _, _ = get_hyperparameters(csv_hyperpara_path, "S_internal8")
+S_int = load_model("solution_internal8_hyperpara" if USE_HYPERPARAMS_CSV else "solution_internal8", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=arch)
+
+arch, _, _, _ = get_hyperparameters(csv_hyperpara_path, "S_boundary8")
+S_bnd = load_model("solution_boundary8_hyperpara" if USE_HYPERPARAMS_CSV else "solution_boundary8", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=arch)
 
 # Directional Flux Operators
 directions = ["bottom", "right", "top", "left"]
+arch_int = {
+    d: get_hyperparameters(csv_hyperpara_path, f"F_internal8_{d}")[0] for d in directions
+}
+arch_bnd = {
+    d: get_hyperparameters(csv_hyperpara_path, f"F_boundary8_{d}")[0] for d in directions
+}
 J_int = {
-    d: load_model(f"flux_internal8_{d}", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=(64, 128, 64, 32))
+    d: load_model(f"flux_internal8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_internal8_{d}", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=arch_int[d])
     for d in directions
 }
 J_bnd = {
-    d: load_model(f"flux_boundary8_{d}", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=(64, 128, 64, 32))
+    d: load_model(f"flux_boundary8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_boundary8_{d}", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=arch_bnd[d])
     for d in directions
 }
 
 # Scalers
-x_scaler_int, y_scaler_S_int = load_scalers("solution_internal8")
-x_scaler_bnd, y_scaler_S_bnd = load_scalers("solution_boundary8")
+x_scaler_int, y_scaler_S_int = load_scalers("solution_internal8_hyperpara" if USE_HYPERPARAMS_CSV else "solution_internal8")
+x_scaler_bnd, y_scaler_S_bnd = load_scalers("solution_boundary8_hyperpara" if USE_HYPERPARAMS_CSV else "solution_boundary8")
 
 x_mean_int = torch.tensor(x_scaler_int.mean_, dtype=torch.float32, device=device)
 x_scale_int = torch.tensor(x_scaler_int.scale_, dtype=torch.float32, device=device)
@@ -326,31 +336,31 @@ x_scale_bnd = torch.tensor(x_scaler_bnd.scale_, dtype=torch.float32, device=devi
 
 unscale_dict_int = {
     d: (
-        torch.tensor(load_scalers(f"flux_internal8_{d}")[1].scale_, dtype=torch.float32, device=device),
-        torch.tensor(load_scalers(f"flux_internal8_{d}")[1].mean_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_internal8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_internal8_{d}")[1].scale_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_internal8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_internal8_{d}")[1].mean_, dtype=torch.float32, device=device),
     )
     for d in directions
 }
 
 unscale_dict_bnd = {
     d: (
-        torch.tensor(load_scalers(f"flux_boundary8_{d}")[1].scale_, dtype=torch.float32, device=device),
-        torch.tensor(load_scalers(f"flux_boundary8_{d}")[1].mean_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_boundary8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_boundary8_{d}")[1].scale_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_boundary8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_boundary8_{d}")[1].mean_, dtype=torch.float32, device=device),
     )
     for d in directions
 }
 
 flux_x_scalers_int = {
     d: (
-        torch.tensor(load_scalers(f"flux_internal8_{d}")[0].mean_, dtype=torch.float32, device=device),
-        torch.tensor(load_scalers(f"flux_internal8_{d}")[0].scale_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_internal8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_internal8_{d}")[0].mean_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_internal8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_internal8_{d}")[0].scale_, dtype=torch.float32, device=device),
     )
     for d in directions
 }
 flux_x_scalers_bnd = {
     d: (
-        torch.tensor(load_scalers(f"flux_boundary8_{d}")[0].mean_, dtype=torch.float32, device=device),
-        torch.tensor(load_scalers(f"flux_boundary8_{d}")[0].scale_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_boundary8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_boundary8_{d}")[0].mean_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_boundary8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_boundary8_{d}")[0].scale_, dtype=torch.float32, device=device),
     )
     for d in directions
 }
@@ -897,5 +907,5 @@ else:
 
 os.makedirs("Plots", exist_ok=True)
 plt.tight_layout()
-plt.savefig(f"Plots/Inference8_Results_{interior_init_mode}.pdf", dpi=300)
-plt.show()
+plt.savefig("Plots/Inference8"+("Hyperpara" if USE_HYPERPARAMS_CSV else "")+f"_Results_{sample_idx}_{interior_init_mode}.pdf", dpi=300)
+plt.show() 

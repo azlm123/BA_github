@@ -12,7 +12,7 @@ import torch.nn as nn
 
 from dd_hdg_face_operations import extract_neighbours_indexes
 from dd_hdg_SVD import project_to_rom, reconstruct_from_rom
-from dd_hdg_training6 import DD_HDG_Trainer
+from dd_hdg_training6 import DD_HDG_Trainer,get_hyperparameters
 
 # =========================================================================
 # DEVICE SETUP & CONFIGURATION
@@ -38,6 +38,7 @@ models_dir = "trained_operators"
 use_non_true_bnd = False
 sample_idx = 10
 run_optimization = True
+USE_HYPERPARAMS_CSV = False  # whether to use hyperparameters from CSV or default ones
 
 # --- Face/corner initialization ---
 # 'nearest_match'      : seed from the global closest-matching training sample's values
@@ -309,49 +310,65 @@ in_dim = (
     + x_bnd.shape[1]
 )
 
+csv_hyperpara_path = "Bases/best_hyperpara6.csv" if USE_HYPERPARAMS_CSV else "Bases/default_hyperpara6.csv"
+
+arch, _, _, _ = get_hyperparameters(csv_hyperpara_path, "S_internal6")
+
 # Load 2 Solution Models (Internal and Boundary)
 S_int = load_model(
-    "solution_internal6",
+    "solution_internal6_hyperpara" if USE_HYPERPARAMS_CSV else "solution_internal6",
     input_dim=in_dim,
     output_dim=y_S.shape[1],
-    hidden_dims=(128, 64),
+    hidden_dims=arch,
 )
+
+arch, _, _, _ = get_hyperparameters(csv_hyperpara_path, "S_boundary6")
 S_bnd = load_model(
-    "solution_boundary6",
+    "solution_boundary6_hyperpara" if USE_HYPERPARAMS_CSV else "solution_boundary6",
     input_dim=in_dim,
     output_dim=y_S.shape[1],
-    hidden_dims=(128, 64),
+    hidden_dims=arch,
 )
+
+arch, _, _, _ = get_hyperparameters(csv_hyperpara_path, "F_internal6_left")
 
 # Load 4 Directional Flux Models (Single unified model per direction from training6)
 J_left = load_model(
-    "flux_internal6_left",
+    "flux_internal6_hyperpara_left" if USE_HYPERPARAMS_CSV else "flux_internal6_left",
     input_dim=in_dim,
     output_dim=y_J_left.shape[1],
-    hidden_dims=(128, 64),
+    hidden_dims=arch,
 )
+
+arch, _, _, _ = get_hyperparameters(csv_hyperpara_path, "F_internal6_right")
 J_right = load_model(
-    "flux_internal6_right",
+    "flux_internal6_hyperpara_right" if USE_HYPERPARAMS_CSV else "flux_internal6_right",
     input_dim=in_dim,
     output_dim=y_J_right.shape[1],
-    hidden_dims=(128, 64),
+    hidden_dims=arch,
 )
+
+arch, _, _, _ = get_hyperparameters(csv_hyperpara_path, "F_internal6_top")
+
 J_top = load_model(
-    "flux_internal6_top",
+    "flux_internal6_hyperpara_top" if USE_HYPERPARAMS_CSV else "flux_internal6_top",
     input_dim=in_dim,
     output_dim=y_J_top.shape[1],
-    hidden_dims=(128, 64),
+    hidden_dims=arch,
 )
+
+arch, _, _, _ = get_hyperparameters(csv_hyperpara_path, "F_internal6_bottom")
+
 J_bottom = load_model(
-    "flux_internal6_bottom",
+    "flux_internal6_hyperpara_bottom" if USE_HYPERPARAMS_CSV else "flux_internal6_bottom",
     input_dim=in_dim,
     output_dim=y_J_bottom.shape[1],
-    hidden_dims=(128, 64),
+    hidden_dims=arch,
 )
 
 # Load Scalers for Solution Models
-x_scaler_int, y_scaler_S_int = load_scalers("solution_internal6")
-x_scaler_bnd, y_scaler_S_bnd = load_scalers("solution_boundary6")
+x_scaler_int, y_scaler_S_int = load_scalers("solution_internal6_hyperpara" if USE_HYPERPARAMS_CSV else "solution_internal6")
+x_scaler_bnd, y_scaler_S_bnd = load_scalers("solution_boundary6_hyperpara" if USE_HYPERPARAMS_CSV else "solution_boundary6")
 
 x_mean_int = torch.tensor(x_scaler_int.mean_, dtype=torch.float32, device=device)
 x_scale_int = torch.tensor(
@@ -365,7 +382,7 @@ x_scale_bnd = torch.tensor(
 # Load Input and Output Scalers for the 4 Flux Networks
 scalers_dict_flux = {}
 for direction in ["left", "right", "top", "bottom"]:
-  x_sc, y_sc = load_scalers(f"flux_internal6_{direction}")
+  x_sc, y_sc = load_scalers(f"flux_internal6_hyperpara_{direction}" if USE_HYPERPARAMS_CSV else f"flux_internal6_{direction}")
   scalers_dict_flux[direction] = {
       "x_scale": torch.tensor(x_sc.scale_, dtype=torch.float32, device=device),
       "x_mean": torch.tensor(x_sc.mean_, dtype=torch.float32, device=device),
@@ -1217,5 +1234,5 @@ else:
 
 os.makedirs("Plots", exist_ok=True)
 plt.tight_layout()
-plt.savefig(f"Plots/Inference6_2Result_{sample_idx}_{interior_init_mode}.pdf", dpi=300)
+plt.savefig("Plots/Inference6"+("Hyperpara" if USE_HYPERPARAMS_CSV else "")+f"Result_{sample_idx}_{interior_init_mode}.pdf", dpi=300)
 plt.show()

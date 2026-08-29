@@ -1,0 +1,7 @@
+operator,arch,lr,batch_size,activation
+S_internal6,"(128, 64)",0.01,64,relu
+S_boundary6,"(128, 64)",0.01,64,relu
+F_internal6_bottom,"(128, 64)",0.01,64,relu
+F_internal6_right,"(128, 64)",0.01,64,relu
+F_internal6_top,"(128, 64)",0.01,64,relu
+F_internal6_left,"(128, 64)",0.01,64,relu

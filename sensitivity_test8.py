@@ -53,7 +53,7 @@ import matplotlib.pyplot as plt
 
 from dd_hdg_training8 import DD_HDG_Trainer
 from dd_hdg_SVD import reconstruct_from_rom
-
+USE_HYPERPARAMS_CSV = True  # whether to use hyperparameters from CSV or default ones
 
 # =============================================================================
 # 1. FEATURE / MODEL LOADING HELPERS
@@ -167,7 +167,7 @@ def run_block_sensitivity(domain_type: str, operator: str, swap_block: str,
                            seed: int = 0, base_indices=None, donor_indices=None,
                            out_dir: str = "input_block_sensitivity_results"):
     """swap_block: 'f_sub' or 'u' (U_face + U_corners + boundary flags)."""
-    model_name = f"{operator}_{domain_type}8" + (f"_{flux_direction}" if flux_direction else "")
+    model_name = f"{operator}_{domain_type}8"+("_hyperpara" if USE_HYPERPARAMS_CSV else "") + (f"_{flux_direction}" if flux_direction else "")
 
     test_file = f"Bases/dataset_operator_{domain_type}_test.csv"
     if not os.path.exists(test_file):
@@ -260,7 +260,7 @@ def plot_block_comparison(df_all: pd.DataFrame, plot_dir: str = "Plots"):
     plt.grid(axis="y", linestyle="--", alpha=0.7)
     plt.legend()
     plt.tight_layout()
-    path = os.path.join(plot_dir, "input_block_sensitivity_comparison8.pdf")
+    path = os.path.join(plot_dir, "input_block_sensitivity_comparison8"+("_hyperpara" if USE_HYPERPARAMS_CSV else "")+".pdf")
     plt.savefig(path, format="pdf", dpi=300)
     plt.close()
     print(f"[INFO] Comparison bar chart saved to: {path}")
@@ -284,7 +284,7 @@ def plot_block_comparison(df_all: pd.DataFrame, plot_dir: str = "Plots"):
     plt.grid(axis="y", linestyle="--", alpha=0.7)
     plt.legend()
     plt.tight_layout()
-    path = os.path.join(plot_dir, "input_block_sensitivity_normalized8.pdf")
+    path = os.path.join(plot_dir, "input_block_sensitivity_normalized8"+("_hyperpara" if USE_HYPERPARAMS_CSV else "")+".pdf")
     plt.savefig(path, format="pdf", dpi=300)
     plt.close()
     print(f"[INFO] Normalized sensitivity chart saved to: {path}")
@@ -333,7 +333,7 @@ def main():
     all_frames = []
 
     def run_both(domain, operator, flux_direction=None):
-        model_name = f"{operator}_{domain}8" + (f"_{flux_direction}" if flux_direction else "")
+        model_name = f"{operator}_{domain}8"+("_hyperpara" if USE_HYPERPARAMS_CSV else "") + (f"_{flux_direction}" if flux_direction else "")
         print("\n" + "=" * 80)
         print(f"INPUT-BLOCK SENSITIVITY TEST: {model_name.upper()}")
         print("=" * 80)
@@ -366,7 +366,7 @@ def main():
 
     df_all = pd.concat(all_frames, ignore_index=True)
     os.makedirs("input_block_sensitivity_results", exist_ok=True)
-    df_all.to_csv("input_block_sensitivity_results/all_block_sensitivity8.csv", index=False)
+    df_all.to_csv("input_block_sensitivity_results/all_block_sensitivity8"+("_hyperpara" if USE_HYPERPARAMS_CSV else "")+".csv", index=False)
 
     plot_block_comparison(df_all, "Plots")
     plot_scatter_per_model(df_all, "Plots")

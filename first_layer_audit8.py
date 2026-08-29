@@ -11,6 +11,7 @@ from dd_hdg_training8 import DD_HDG_Trainer
 # 1. CONFIGURATION & COLUMN PARSING
 # =============================================================================
 device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
+USE_HYPERPARAMS_CSV = True  # whether to use hyperparameters from CSV or default ones
 
 def get_f_dim(domain_type: str = 'internal'):
     test_file = f"Bases/dataset_operator_{domain_type}_test.csv"
@@ -33,7 +34,7 @@ def audit_all_models(models_dir: str = "trained_operators"):
         f_dim = get_f_dim(domain)
         
         # 1. Solution Model
-        s_name = f"solution_{domain}8"
+        s_name = f"solution_{domain}8"+("_hyperpara" if USE_HYPERPARAMS_CSV else "")
         s_path = os.path.join(models_dir, f"{s_name}_model.pth")
         if os.path.exists(s_path):
             state_dict = torch.load(s_path, map_location=device)
@@ -61,7 +62,7 @@ def audit_all_models(models_dir: str = "trained_operators"):
             
         # 2. Flux Models
         for f_dir in flux_directions:
-            j_name = f"flux_{domain}8_{f_dir}"
+            j_name = f"flux_{domain}8"+("_hyperpara" if USE_HYPERPARAMS_CSV else "")+ f"_{f_dir}"
             j_path = os.path.join(models_dir, f"{j_name}_model.pth")
             if os.path.exists(j_path):
                 state_dict = torch.load(j_path, map_location=device)
@@ -121,7 +122,7 @@ def plot_first_layer_audit(df_res: pd.DataFrame, plot_dir: str = "Plots"):
         ax.text(bar.get_x() + bar.get_width() / 2, yval, f"{yval:.2f}", ha="center", va="bottom", fontsize=8)
         
     plt.tight_layout()
-    path1 = os.path.join(plot_dir, "first_layer_weight_audit_mean_col8.pdf")
+    path1 = os.path.join(plot_dir, "first_layer_weight_audit_mean_col8"+("_hyperpara" if USE_HYPERPARAMS_CSV else "_default")+".pdf")
     plt.savefig(path1, format="pdf", dpi=300)
     plt.close()
     print(f"[INFO] First layer feature weight chart saved to: {path1}")
@@ -142,7 +143,7 @@ def plot_first_layer_audit(df_res: pd.DataFrame, plot_dir: str = "Plots"):
         ax.text(bar.get_x() + bar.get_width() / 2, yval, f"{yval:.2e}", ha="center", va="bottom", fontsize=8.5)
         
     plt.tight_layout()
-    path2 = os.path.join(plot_dir, "first_layer_weight_ratio8.pdf")
+    path2 = os.path.join(plot_dir, "first_layer_weight_ratio8"+("_hyperpara" if USE_HYPERPARAMS_CSV else "_default")+".pdf")
     plt.savefig(path2, format="pdf", dpi=300)
     plt.close()
     print(f"[INFO] First layer weight ratio chart saved to: {path2}")

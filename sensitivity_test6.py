@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 from dd_hdg_training6 import DD_HDG_Trainer, harmonize_df
 from dd_hdg_SVD import reconstruct_from_rom
 
-
+USE_HYPERPARAMS_CSV = True  # whether to use hyperparameters from CSV or default ones
 # =============================================================================
 # 1. FEATURE / MODEL LOADING HELPERS
 # =============================================================================
@@ -129,11 +129,11 @@ def run_block_sensitivity(operator: str, swap_block: str, domain_type: str = Non
                           out_dir: str = "input_block_sensitivity_results"):
     
     if operator == 'solution':
-        model_name = f"solution_{domain_type}6"
+        model_name = f"solution_{domain_type}6"+("_hyperpara" if USE_HYPERPARAMS_CSV else "")
         test_file = f"Bases/dataset_operator_{domain_type}_test.csv"
         df_test = harmonize_df(pd.read_csv(test_file))
     else:
-        model_name = f"flux_internal6_{flux_direction}"
+        model_name = f"flux_internal6"+("_hyperpara" if USE_HYPERPARAMS_CSV else "")+ f"_{flux_direction}"
         # Combine datasets and filter for non-boundary faces matching training6 logic
         df_test_int = harmonize_df(pd.read_csv("Bases/dataset_operator_internal_test.csv"))
         df_test_bnd = harmonize_df(pd.read_csv("Bases/dataset_operator_boundary_test.csv"))
@@ -225,7 +225,7 @@ def plot_block_comparison(df_all: pd.DataFrame, plot_dir: str = "Plots"):
     plt.grid(axis="y", linestyle="--", alpha=0.7)
     plt.legend()
     plt.tight_layout()
-    path = os.path.join(plot_dir, "input_block_sensitivity_comparison6.pdf")
+    path = os.path.join(plot_dir, "input_block_sensitivity_comparison6"+("_hyperpara" if USE_HYPERPARAMS_CSV else "")+".pdf")
     plt.savefig(path, format="pdf", dpi=300)
     plt.close()
     print(f"[INFO] Comparison bar chart saved to: {path}")
@@ -246,7 +246,7 @@ def plot_block_comparison(df_all: pd.DataFrame, plot_dir: str = "Plots"):
     plt.grid(axis="y", linestyle="--", alpha=0.7)
     plt.legend()
     plt.tight_layout()
-    path = os.path.join(plot_dir, "input_block_sensitivity_normalized6.pdf")
+    path = os.path.join(plot_dir, "input_block_sensitivity_normalized6"+("_hyperpara" if USE_HYPERPARAMS_CSV else "")+".pdf")
     plt.savefig(path, format="pdf", dpi=300)
     plt.close()
     print(f"[INFO] Normalized sensitivity chart saved to: {path}")
@@ -289,7 +289,7 @@ def main():
     all_frames = []
 
     def evaluate_sensitivity(operator: str, domain_type: str = None, flux_direction: str = None):
-        name = f"solution_{domain_type}6" if operator == 'solution' else f"flux_internal6_{flux_direction}"
+        name = f"solution_{domain_type}6"+("_hyperpara" if USE_HYPERPARAMS_CSV else "") if operator == 'solution' else f"flux_internal6"+("_hyperpara" if USE_HYPERPARAMS_CSV else "")+ f"_{flux_direction}"
         print("\n" + "=" * 80)
         print(f"INPUT-BLOCK SENSITIVITY TEST: {name.upper()}")
         print("=" * 80)
@@ -321,7 +321,7 @@ def main():
 
     df_all = pd.concat(all_frames, ignore_index=True)
     os.makedirs("input_block_sensitivity_results", exist_ok=True)
-    df_all.to_csv("input_block_sensitivity_results/all_block_sensitivity6.csv", index=False)
+    df_all.to_csv("input_block_sensitivity_results/all_block_sensitivity6"+("_hyperpara" if USE_HYPERPARAMS_CSV else "_default")+".csv", index=False)
 
     plot_block_comparison(df_all, "Plots")
     plot_scatter_per_model(df_all, "Plots")

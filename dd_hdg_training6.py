@@ -1,3 +1,4 @@
+import ast
 import os
 import copy
 import pickle
@@ -24,6 +25,7 @@ if torch.cuda.is_available():
     torch.cuda.manual_seed(42)
 
 NUM_EPOCHS = 300
+USE_HYPERPARAMS_CSV = True
 LOSS_FN = nn.MSELoss()
 USER_EARLY_STOPPER = False
 
@@ -54,10 +56,13 @@ class EarlyStopper:
 
 
 class DD_HDG_Trainer(nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dims=(64, 128, 64, 32)):
+    def __init__(self, input_dim, output_dim, hidden_dims=(64, 128, 64, 32),activation_fn="relu"):
         super(DD_HDG_Trainer, self).__init__()
         layers = []
-        activation = nn.SiLU()
+        if activation_fn == "relu":
+            activation = nn.ReLU()
+        else:
+            activation = nn.SiLU()
         if len(hidden_dims) > 0:
             layers.append(nn.Linear(input_dim, hidden_dims[0]))
             layers.append(activation)
@@ -227,12 +232,12 @@ def validation_loop(dataloader, model, loss_fn):
 # =============================================================================
 
 def train_single_operator(operator: str, domain_type: str = None, flux_direction: str = None, 
-                          batch_size=64, lr=1e-2, hidden_dims=(64, 128, 64, 32), num_epochs=NUM_EPOCHS):
+                          batch_size=64, lr=1e-2, hidden_dims=(64, 128, 64, 32),activation_fn="relu", num_epochs=NUM_EPOCHS):
     """Train a single NN operator model, save artifacts, and evaluate reconstruction error."""
     if operator == 'solution':
-        model_name = f"solution_{domain_type}6"
+        model_name = f"solution_{domain_type}6"+("_hyperpara" if USE_HYPERPARAMS_CSV else "")
     else:
-        model_name = f"flux_internal6_{flux_direction}"
+        model_name = f"flux_internal6"+("_hyperpara" if USE_HYPERPARAMS_CSV else "") + (f"_{flux_direction}" if flux_direction else "")
 
     print("\n" + "=" * 80)
     print(f"TRAINING OPERATOR: {model_name.upper()}")
@@ -251,7 +256,7 @@ def train_single_operator(operator: str, domain_type: str = None, flux_direction
     test_loader = DataLoader(TensorDataset(X_te, y_te), batch_size=batch_size, shuffle=False)
 
     # 2. Instantiate Model
-    model = DD_HDG_Trainer(input_dim=in_dim, output_dim=out_dim, hidden_dims=hidden_dims).to(device)
+    model = DD_HDG_Trainer(input_dim=in_dim, output_dim=out_dim, hidden_dims=hidden_dims, activation_fn=activation_fn).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=5e-4)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
     early_stopper = EarlyStopper(tolerance=8) if USER_EARLY_STOPPER else None
@@ -341,7 +346,71 @@ def train_single_operator(operator: str, domain_type: str = None, flux_direction
 
     print(f"  ✓ Model & Scalers saved to directory 'trained_operators/'")
     return test_loss, rel_err
+def get_hyperparameters(csv_path: str, model_key: str):
+    """Retrieve hyperparameters from best_hyperpara6.csv or fall back to the closest operator."""
+    df = pd.read_csv(csv_path)
 
+    # 1. Exact match
+    row = df[df['operator'] == model_key]
+    if not row.empty:
+        r = row.iloc[0]
+        return ast.literal_eval(r['arch']), float(r['lr']), int(r['batch_size']), str(r['activation']).lower()
+
+    # 2. Flux fallback
+    if "flux" in model_key.lower() or model_key.startswith("F_"):
+        is_vertical = any(x in model_key for x in ["top", "bottom"])
+        domain = "internal" if "internal" in model_key else "boundary"
+
+        # Directional symmetry fallback: top <-> bottom, left <-> right
+        if "top" in model_key:
+            alt = model_key.replace("top", "bottom")
+        elif "bottom" in model_key:
+            alt = model_key.replace("bottom", "top")
+        elif "left" in model_key:
+            alt = model_key.replace("left", "right")
+        elif "right" in model_key:
+            alt = model_key.replace("right", "left")
+        else:
+            alt = None
+
+        if alt and not df[df['operator'] == alt].empty:
+            r = df[df['operator'] == alt].iloc[0]
+            print(f"  [Hyperparams] '{model_key}' -> directional fallback: '{alt}'")
+            return ast.literal_eval(r['arch']), float(r['lr']), int(r['batch_size']), str(r['activation']).lower()
+
+        # Same domain flux fallback
+        same_domain = df[df['operator'].str.startswith(f"F_{domain}6")]
+        if not same_domain.empty:
+            r = same_domain.iloc[0]
+            print(f"  [Hyperparams] '{model_key}' -> domain fallback: '{r['operator']}'")
+            return ast.literal_eval(r['arch']), float(r['lr']), int(r['batch_size']), str(r['activation']).lower()
+
+        # Cross-domain fallback
+        other_domain = "boundary" if domain == "internal" else "internal"
+        target_dirs = ["top", "bottom"] if is_vertical else ["left", "right"]
+        for d_dir in target_dirs:
+            cand = f"F_{other_domain}6_{d_dir}"
+            cand_row = df[df['operator'] == cand]
+            if not cand_row.empty:
+                r = cand_row.iloc[0]
+                print(f"  [Hyperparams] '{model_key}' -> cross-domain fallback: '{r['operator']}'")
+                return ast.literal_eval(r['arch']), float(r['lr']), int(r['batch_size']), str(r['activation']).lower()
+
+    # 3. Solution fallback: internal <-> boundary
+    elif "solution" in model_key.lower() or model_key.startswith("S_"):
+        alt = (
+            model_key.replace("internal", "boundary")
+            if "internal" in model_key
+            else model_key.replace("boundary", "internal")
+        )
+        if not df[df['operator'] == alt].empty:
+            r = df[df['operator'] == alt].iloc[0]
+            print(f"  [Hyperparams] '{model_key}' -> solution fallback: '{alt}'")
+            return ast.literal_eval(r['arch']), float(r['lr']), int(r['batch_size']), str(r['activation']).lower()
+
+    # Default fallback
+    r = df.iloc[0]
+    return ast.literal_eval(r['arch']), float(r['lr']), int(r['batch_size']), str(r['activation']).lower()
 
 # =============================================================================
 # 5. MAIN MULTI-MODEL ORCHESTRATION
@@ -349,37 +418,74 @@ def train_single_operator(operator: str, domain_type: str = None, flux_direction
 
 def main():
     results = []
+    if USE_HYPERPARAMS_CSV:
+        csv_file = "Bases/best_hyperpara6.csv"
+    else:
+        csv_file = "Bases/default_hyperpara6.csv"
 
-    print("Starting Training Pipeline for 6 Operators (2 Solution: internal/boundary, 4 Internal Fluxes)...")
+    print("Starting Training Pipeline for 6 Operators (Loading from best_hyperpara6.csv)...")
     
     # 1. Solution Operator for Internal Subdomains
+    sol_int_key = "S_internal6"
+    arch, lr, bs, act = get_hyperparameters(csv_file, sol_int_key)
+
+    print("\n" + "-" * 70)
+    print(f">> Model: {sol_int_key}")
+    print(f"   Architecture: {arch} | LR: {lr} | Batch Size: {bs} | Activation: {act}")
+    print("-" * 70)
+
     test_loss, rel_err = train_single_operator(
         operator='solution',
         domain_type='internal',
-        hidden_dims=(128, 64),
+        hidden_dims=arch,
+        lr=lr,
+        batch_size=bs,
+        activation_fn=act,
         num_epochs=300
     )
-    results.append({"model": "S_internal6", "test_mse": test_loss, "rel_error": rel_err})
+    results.append({"model": sol_int_key, "test_mse": test_loss, "rel_error": rel_err})
 
     # 2. Solution Operator for Boundary Subdomains
+    sol_bnd_key = "S_boundary6"
+    arch, lr, bs, act = get_hyperparameters(csv_file, sol_bnd_key)
+
+    print("\n" + "-" * 70)
+    print(f">> Model: {sol_bnd_key}")
+    print(f"   Architecture: {arch} | LR: {lr} | Batch Size: {bs} | Activation: {act}")
+    print("-" * 70)
+
     test_loss, rel_err = train_single_operator(
         operator='solution',
         domain_type='boundary',
-        hidden_dims=(128, 64),
+        hidden_dims=arch,
+        lr=lr,
+        batch_size=bs,
+        activation_fn=act,
         num_epochs=300
     )
-    results.append({"model": "S_boundary6", "test_mse": test_loss, "rel_error": rel_err})
+    results.append({"model": sol_bnd_key, "test_mse": test_loss, "rel_error": rel_err})
 
-    # 3. Four Directional Internal Flux Operators (combining datasets & filtering for is_u_face_bnd == 0)
+    # 3. Four Directional Internal Flux Operators
     flux_directions = ["bottom", "right", "top", "left"]
     for f_dir in flux_directions:
+        flux_key = f"F_internal6_{f_dir}"
+        arch, lr, bs, act = get_hyperparameters(csv_file, flux_key)
+
+        print("\n" + "-" * 70)
+        print(f">> Model: {flux_key}")
+        print(f"   Architecture: {arch} | LR: {lr} | Batch Size: {bs} | Activation: {act}")
+        print("-" * 70)
+
         test_loss, rel_err = train_single_operator(
             operator='flux',
             flux_direction=f_dir,
-            hidden_dims=(128, 64),
+            hidden_dims=arch,
+            lr=lr,
+            batch_size=bs,
+            activation_fn=act,
             num_epochs=100
         )
-        results.append({"model": f"F_internal6_{f_dir}", "test_mse": test_loss, "rel_error": rel_err})
+        results.append({"model": flux_key, "test_mse": test_loss, "rel_error": rel_err})
 
     # Summary Output Table
     print("\n" + "=" * 80)
@@ -431,7 +537,7 @@ def main():
         )
 
     plt.tight_layout()
-    save_path = os.path.join(plot_dir, "operator_training6_summary.pdf")
+    save_path = os.path.join(plot_dir, f"operator_training6"+("_hyperpara" if USE_HYPERPARAMS_CSV else "")+"_summary.pdf")
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.close()
 
