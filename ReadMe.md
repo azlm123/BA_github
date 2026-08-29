@@ -1024,6 +1024,11 @@ python unet_predict.py
 # Notes
 
 * The **hyperparameter study**, **first-layer audits**, **input-block sensitivity tests**, and **U-Net benchmark** are optional analysis or comparison workflows.
+
 * The 6- and 10-operator configurations should be used consistently between training and inference.
+
 * The inference initialization strategy can significantly affect the starting point of the iterative coupling procedure and can be changed through `interior_init_mode`.
+
 * First-layer weight analysis and functional sensitivity analysis measure different aspects of the trained models and are therefore best interpreted together.
+
+* **Using Hyperparameter-Study Results:** If you want to use the optimized parameters obtained from the **hyperparameter study**, set `USE_HYPERPARA_CSV = True` in the corresponding **training, inference, first-layer audit, or sensitivity-test** script. Setting `USE_HYPERPARA_CSV = False` will use the default hyperparameters in the respective file.
