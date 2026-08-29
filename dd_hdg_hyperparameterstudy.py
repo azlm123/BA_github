@@ -331,9 +331,15 @@ def run_hyperparameter_study(mode="training6", num_epochs=150):
     # Export CSV
     df_results = pd.DataFrame(all_study_results)
     os.makedirs("Bases", exist_ok=True)
-    csv_path = f"Bases/hyperparameter_study_{mode}.csv"
+    csv_path = f"Bases/hyperpara{mode}.csv"
     df_results.to_csv(csv_path, index=False)
     print(f"\n✓ Detailed results saved to '{csv_path}'")
+
+    # Filter and Export Best Configurations CSV
+    best_per_op = df_results.loc[df_results.groupby("operator")["rel_error"].idxmin()].reset_index(drop=True)
+    best_csv_path = f"Bases/best_hyperpara{mode}.csv"
+    best_per_op.to_csv(best_csv_path, index=False)
+    print(f"✓ Best configurations saved to '{best_csv_path}'")
 
     # Plot Summary Bar Chart
     best_per_op = df_results.loc[df_results.groupby("operator")["rel_error"].idxmin()]
