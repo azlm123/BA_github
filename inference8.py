@@ -907,5 +907,5 @@ else:
 
 os.makedirs("Plots", exist_ok=True)
 plt.tight_layout()
-plt.savefig("Plots/Inference8"+("Hyperpara" if USE_HYPERPARAMS_CSV else "")+f"_Results_{sample_idx}_{interior_init_mode}.pdf", dpi=300)
+plt.savefig("Plots/Inference8"+("Hyperpara" if USE_HYPERPARAMS_CSV else "")+("no_optimisation" if not run_optimization else "")+f"_Results_{sample_idx}_{interior_init_mode}.pdf", dpi=300)
 plt.show() 

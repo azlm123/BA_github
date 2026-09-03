@@ -253,8 +253,16 @@ Detailed results are saved in `Bases/`:
 
 ```text id="op7p50"
 Bases/
-├── hyperparameter_study_training6.csv
-└── hyperparameter_study_training8.csv
+├── hyperpara6.csv
+└── hyperpara8.csv
+```
+
+Best configurations are saved in `Bases/`:
+
+```text id="op7p51"
+Bases/
+├── best_hyperpara6.csv
+└── best_hyperpara8.csv
 ```
 
 Summary plots are saved in `Plots/`:
@@ -267,7 +275,13 @@ Plots/
 
 The summary plots compare the best relative reconstruction errors obtained during the hyperparameter search.
 
-> **Note:** The hyperparameter study is optional. It is intended for architecture and training-parameter selection before final model training.
+> **Note:**The hyperparameter study is optional and intended for architecture and training-parameter selection before final model training. If the hyperparameter study is not run, the models will run with the default hyperparameters stored in:
+
+```text id="op7p53"
+Bases/
+├── default_hyperpara6.csv
+└── default_hyperpara8.csv
+```
 
 ---
 
