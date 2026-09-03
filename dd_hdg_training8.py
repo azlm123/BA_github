@@ -218,7 +218,7 @@ def validation_loop(dataloader, model, loss_fn):
 
 def train_single_operator(domain_type: str, operator: str, flux_direction: str = None, 
                           batch_size=64, lr=1e-2, hidden_dims=(64, 128, 64, 32), num_epochs=NUM_EPOCHS):
-    model_name = f"{operator}_{domain_type}8" + (f"_{flux_direction}" if flux_direction else "")
+    model_name = f"{operator}_{domain_type}_train8" + (f"_{flux_direction}" if flux_direction else "")
     print("\n" + "=" * 80)
     print(f"TRAINING OPERATOR: {model_name.upper()}")
     print("=" * 80)
@@ -407,7 +407,7 @@ def main():
         )
 
     plt.tight_layout()
-    save_path = os.path.join(plot_dir, "operator_training8_summary.pdf")
+    save_path = os.path.join(plot_dir, "operator_train8_summary.pdf")
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"\n[INFO] Bar chart successfully saved to: {save_path}")

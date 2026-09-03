@@ -301,23 +301,23 @@ in_dim = (
 )
 
 # Solution Operators
-S_int = load_model("solution_internal8", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=(64, 32))
-S_bnd = load_model("solution_boundary8", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=(64, 32))
+S_int = load_model("solution_internal_train8", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=(64, 32))
+S_bnd = load_model("solution_boundary_train8", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=(64, 32))
 
 # Directional Flux Operators
 directions = ["bottom", "right", "top", "left"]
 J_int = {
-    d: load_model(f"flux_internal8_{d}", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=(64, 128, 64, 32))
+    d: load_model(f"flux_internal_train8_{d}", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=(64, 128, 64, 32))
     for d in directions
 }
 J_bnd = {
-    d: load_model(f"flux_boundary8_{d}", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=(64, 128, 64, 32))
+    d: load_model(f"flux_boundary_train8_{d}", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=(64, 128, 64, 32))
     for d in directions
 }
 
 # Scalers
-x_scaler_int, y_scaler_S_int = load_scalers("solution_internal8")
-x_scaler_bnd, y_scaler_S_bnd = load_scalers("solution_boundary8")
+x_scaler_int, y_scaler_S_int = load_scalers("solution_internal_train8")
+x_scaler_bnd, y_scaler_S_bnd = load_scalers("solution_boundary_train8")
 
 x_mean_int = torch.tensor(x_scaler_int.mean_, dtype=torch.float32, device=device)
 x_scale_int = torch.tensor(x_scaler_int.scale_, dtype=torch.float32, device=device)
@@ -326,31 +326,31 @@ x_scale_bnd = torch.tensor(x_scaler_bnd.scale_, dtype=torch.float32, device=devi
 
 unscale_dict_int = {
     d: (
-        torch.tensor(load_scalers(f"flux_internal8_{d}")[1].scale_, dtype=torch.float32, device=device),
-        torch.tensor(load_scalers(f"flux_internal8_{d}")[1].mean_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_internal_train8_{d}")[1].scale_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_internal_train8_{d}")[1].mean_, dtype=torch.float32, device=device),
     )
     for d in directions
 }
 
 unscale_dict_bnd = {
     d: (
-        torch.tensor(load_scalers(f"flux_boundary8_{d}")[1].scale_, dtype=torch.float32, device=device),
-        torch.tensor(load_scalers(f"flux_boundary8_{d}")[1].mean_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_boundary_train8_{d}")[1].scale_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_boundary_train8_{d}")[1].mean_, dtype=torch.float32, device=device),
     )
     for d in directions
 }
 
 flux_x_scalers_int = {
     d: (
-        torch.tensor(load_scalers(f"flux_internal8_{d}")[0].mean_, dtype=torch.float32, device=device),
-        torch.tensor(load_scalers(f"flux_internal8_{d}")[0].scale_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_internal_train8_{d}")[0].mean_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_internal_train8_{d}")[0].scale_, dtype=torch.float32, device=device),
     )
     for d in directions
 }
 flux_x_scalers_bnd = {
     d: (
-        torch.tensor(load_scalers(f"flux_boundary8_{d}")[0].mean_, dtype=torch.float32, device=device),
-        torch.tensor(load_scalers(f"flux_boundary8_{d}")[0].scale_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_boundary_train8_{d}")[0].mean_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_boundary_train8_{d}")[0].scale_, dtype=torch.float32, device=device),
     )
     for d in directions
 }
