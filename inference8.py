@@ -34,8 +34,8 @@ csv_boundary_train_path = "Bases/dataset_operator_boundary_train.csv"
 npz_rom_path = "Bases/hdg_rom_bases.npz"
 models_dir = "trained_operators"
 use_non_true_bnd = False
-sample_idx = 10  # test sample index for inference
-run_optimization = True  # whether to run the optimization step after initial inference
+sample_idx = 10 # test sample index for inference
+run_optimization = False  # whether to run the optimization step after initial inference
 USE_HYPERPARAMS_CSV = False  # whether to use hyperparameters from CSV or default ones
 
 # --- Face/corner initialization ---
@@ -303,10 +303,10 @@ in_dim = (
 csv_hyperpara_path = "Bases/best_hyperpara8.csv" if USE_HYPERPARAMS_CSV else "Bases/default_hyperpara8.csv"
 # Solution Operators
 arch, _, _, _ = get_hyperparameters(csv_hyperpara_path, "S_internal8")
-S_int = load_model("solution_internal8_hyperpara" if USE_HYPERPARAMS_CSV else "solution_internal8", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=arch)
+S_int = load_model("solution_internal8_hyperpara" if USE_HYPERPARAMS_CSV else "solution_internal_train8", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=arch)
 
 arch, _, _, _ = get_hyperparameters(csv_hyperpara_path, "S_boundary8")
-S_bnd = load_model("solution_boundary8_hyperpara" if USE_HYPERPARAMS_CSV else "solution_boundary8", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=arch)
+S_bnd = load_model("solution_boundary8_hyperpara" if USE_HYPERPARAMS_CSV else "solution_boundary_train8", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=arch)
 
 # Directional Flux Operators
 directions = ["bottom", "right", "top", "left"]
@@ -317,17 +317,17 @@ arch_bnd = {
     d: get_hyperparameters(csv_hyperpara_path, f"F_boundary8_{d}")[0] for d in directions
 }
 J_int = {
-    d: load_model(f"flux_internal8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_internal8_{d}", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=arch_int[d])
+    d: load_model(f"flux_internal8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_internal_train8_{d}", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=arch_int[d])
     for d in directions
 }
 J_bnd = {
-    d: load_model(f"flux_boundary8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_boundary8_{d}", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=arch_bnd[d])
+    d: load_model(f"flux_boundary8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_boundary_train8_{d}", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=arch_bnd[d])
     for d in directions
 }
 
 # Scalers
-x_scaler_int, y_scaler_S_int = load_scalers("solution_internal8_hyperpara" if USE_HYPERPARAMS_CSV else "solution_internal8")
-x_scaler_bnd, y_scaler_S_bnd = load_scalers("solution_boundary8_hyperpara" if USE_HYPERPARAMS_CSV else "solution_boundary8")
+x_scaler_int, y_scaler_S_int = load_scalers("solution_internal8_hyperpara" if USE_HYPERPARAMS_CSV else "solution_internal_train8")
+x_scaler_bnd, y_scaler_S_bnd = load_scalers("solution_boundary8_hyperpara" if USE_HYPERPARAMS_CSV else "solution_boundary_train8")
 
 x_mean_int = torch.tensor(x_scaler_int.mean_, dtype=torch.float32, device=device)
 x_scale_int = torch.tensor(x_scaler_int.scale_, dtype=torch.float32, device=device)
@@ -336,31 +336,31 @@ x_scale_bnd = torch.tensor(x_scaler_bnd.scale_, dtype=torch.float32, device=devi
 
 unscale_dict_int = {
     d: (
-        torch.tensor(load_scalers(f"flux_internal8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_internal8_{d}")[1].scale_, dtype=torch.float32, device=device),
-        torch.tensor(load_scalers(f"flux_internal8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_internal8_{d}")[1].mean_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_internal8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_internal_train8_{d}")[1].scale_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_internal8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_internal_train8_{d}")[1].mean_, dtype=torch.float32, device=device),
     )
     for d in directions
 }
 
 unscale_dict_bnd = {
     d: (
-        torch.tensor(load_scalers(f"flux_boundary8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_boundary8_{d}")[1].scale_, dtype=torch.float32, device=device),
-        torch.tensor(load_scalers(f"flux_boundary8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_boundary8_{d}")[1].mean_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_boundary8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_boundary_train8_{d}")[1].scale_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_boundary8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_boundary_train8_{d}")[1].mean_, dtype=torch.float32, device=device),
     )
     for d in directions
 }
 
 flux_x_scalers_int = {
     d: (
-        torch.tensor(load_scalers(f"flux_internal8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_internal8_{d}")[0].mean_, dtype=torch.float32, device=device),
-        torch.tensor(load_scalers(f"flux_internal8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_internal8_{d}")[0].scale_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_internal8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_internal_train8_{d}")[0].mean_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_internal8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_internal_train8_{d}")[0].scale_, dtype=torch.float32, device=device),
     )
     for d in directions
 }
 flux_x_scalers_bnd = {
     d: (
-        torch.tensor(load_scalers(f"flux_boundary8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_boundary8_{d}")[0].mean_, dtype=torch.float32, device=device),
-        torch.tensor(load_scalers(f"flux_boundary8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_boundary8_{d}")[0].scale_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_boundary8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_boundary_train8_{d}")[0].mean_, dtype=torch.float32, device=device),
+        torch.tensor(load_scalers(f"flux_boundary8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_boundary_train8_{d}")[0].scale_, dtype=torch.float32, device=device),
     )
     for d in directions
 }

@@ -1,11 +1,11 @@
 operator,arch,lr,batch_size,activation
-S_internal8,"(64, 32)",0.01,64,relu
-S_boundary8,"(64, 32)",0.01,64,relu
-F_internal8_bottom,"(64, 128, 64, 32)",0.01,64,relu
-F_internal8_right,"(64, 128, 64, 32)",0.01,64,relu
-F_internal8_top,"(64, 128, 64, 32)",0.01,64,relu
-F_internal8_left,"(64, 128, 64, 32)",0.01,64,relu
-F_boundary8_bottom,"(64, 128, 64, 32)",0.01,64,relu
-F_boundary8_right,"(64, 128, 64, 32)",0.01,64,relu
-F_boundary8_top,"(64, 128, 64, 32)",0.01,64,relu
-F_boundary8_left,"(64, 128, 64, 32)",0.01,64,relu
+S_internal8,"(64, 32)",0.01,64,silu
+S_boundary8,"(64, 32)",0.01,64,silu
+F_internal8_bottom,"(64, 128, 64, 32)",0.01,64,silu
+F_internal8_right,"(64, 128, 64, 32)",0.01,64,silu
+F_internal8_top,"(64, 128, 64, 32)",0.01,64,silu
+F_internal8_left,"(64, 128, 64, 32)",0.01,64,silu
+F_boundary8_bottom,"(64, 128, 64, 32)",0.01,64,silu
+F_boundary8_right,"(64, 128, 64, 32)",0.01,64,silu
+F_boundary8_top,"(64, 128, 64, 32)",0.01,64,silu
+F_boundary8_left,"(64, 128, 64, 32)",0.01,64,silu
