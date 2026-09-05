@@ -63,11 +63,12 @@ def load_model(
     input_dim: int,
     output_dim: int,
     hidden_dims=(64, 128, 64, 32),
+    activation_fn: str = "silu",
 ) -> nn.Module:
   model_path = os.path.join(models_dir, f"{model_name}_model.pth")
   model = DD_HDG_Trainer(
-      input_dim=input_dim, output_dim=output_dim, hidden_dims=hidden_dims
-  )
+          input_dim=input_dim, output_dim=output_dim, hidden_dims=hidden_dims,activation_fn=activation_fn
+      )
   state_dict = torch.load(model_path, map_location=device)
   model.load_state_dict(state_dict)
   model.to(device)
@@ -312,7 +313,7 @@ in_dim = (
 
 csv_hyperpara_path = "Bases/best_hyperpara6.csv" if USE_HYPERPARAMS_CSV else "Bases/default_hyperpara6.csv"
 
-arch, _, _, _ = get_hyperparameters(csv_hyperpara_path, "S_internal6")
+arch, _, _, activation_fn = get_hyperparameters(csv_hyperpara_path, "S_internal6")
 
 # Load 2 Solution Models (Internal and Boundary)
 S_int = load_model(
@@ -320,17 +321,19 @@ S_int = load_model(
     input_dim=in_dim,
     output_dim=y_S.shape[1],
     hidden_dims=arch,
+    activation_fn=activation_fn
 )
 
-arch, _, _, _ = get_hyperparameters(csv_hyperpara_path, "S_boundary6")
+arch, _, _, activation_fn = get_hyperparameters(csv_hyperpara_path, "S_boundary6")
 S_bnd = load_model(
     "solution_boundary6_hyperpara" if USE_HYPERPARAMS_CSV else "solution_boundary6",
     input_dim=in_dim,
     output_dim=y_S.shape[1],
     hidden_dims=arch,
+    activation_fn=activation_fn
 )
 
-arch, _, _, _ = get_hyperparameters(csv_hyperpara_path, "F_internal6_left")
+arch, _, _, activation_fn = get_hyperparameters(csv_hyperpara_path, "F_internal6_left")
 
 # Load 4 Directional Flux Models (Single unified model per direction from training6)
 J_left = load_model(
@@ -338,32 +341,36 @@ J_left = load_model(
     input_dim=in_dim,
     output_dim=y_J_left.shape[1],
     hidden_dims=arch,
+    activation_fn=activation_fn
 )
 
-arch, _, _, _ = get_hyperparameters(csv_hyperpara_path, "F_internal6_right")
+arch, _, _, activation_fn = get_hyperparameters(csv_hyperpara_path, "F_internal6_right")
 J_right = load_model(
     "flux_internal6_hyperpara_right" if USE_HYPERPARAMS_CSV else "flux_internal6_right",
     input_dim=in_dim,
     output_dim=y_J_right.shape[1],
     hidden_dims=arch,
+    activation_fn=activation_fn
 )
 
-arch, _, _, _ = get_hyperparameters(csv_hyperpara_path, "F_internal6_top")
+arch, _, _, activation_fn = get_hyperparameters(csv_hyperpara_path, "F_internal6_top")
 
 J_top = load_model(
     "flux_internal6_hyperpara_top" if USE_HYPERPARAMS_CSV else "flux_internal6_top",
     input_dim=in_dim,
     output_dim=y_J_top.shape[1],
     hidden_dims=arch,
+    activation_fn=activation_fn
 )
 
-arch, _, _, _ = get_hyperparameters(csv_hyperpara_path, "F_internal6_bottom")
+arch, _, _, activation_fn = get_hyperparameters(csv_hyperpara_path, "F_internal6_bottom")
 
 J_bottom = load_model(
     "flux_internal6_hyperpara_bottom" if USE_HYPERPARAMS_CSV else "flux_internal6_bottom",
     input_dim=in_dim,
     output_dim=y_J_bottom.shape[1],
     hidden_dims=arch,
+    activation_fn=activation_fn
 )
 
 # Load Scalers for Solution Models

@@ -27,7 +27,7 @@ if torch.cuda.is_available():
 NUM_EPOCHS = 300
 LOSS_FN = nn.MSELoss()
 USER_EARLY_STOPPER = False
-USE_HYPERPARAMS_CSV = True  # Flag to control hyperparameter loading from CSV
+USE_HYPERPARAMS_CSV = False  # Flag to control hyperparameter loading from CSV
 
 # =============================================================================
 # 1. HELPER CLASSES & RECONSTRUCTION UTILITIES

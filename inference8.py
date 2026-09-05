@@ -32,10 +32,10 @@ csv_boundary_test_path = "Bases/dataset_operator_boundary_test.csv"
 csv_internal_train_path = "Bases/dataset_operator_internal_train.csv"
 csv_boundary_train_path = "Bases/dataset_operator_boundary_train.csv"
 npz_rom_path = "Bases/hdg_rom_bases.npz"
-models_dir = "trained_operators copy"
+models_dir = "trained_operators"
 use_non_true_bnd = False
 sample_idx = 10 # test sample index for inference
-run_optimization = False  # whether to run the optimization step after initial inference
+run_optimization = True  # whether to run the optimization step after initial inference
 USE_HYPERPARAMS_CSV = False  # whether to use hyperparameters from CSV or default ones
 
 # --- Face/corner initialization ---
@@ -63,10 +63,11 @@ def load_model(
     input_dim: int,
     output_dim: int,
     hidden_dims=(64, 128, 64, 32),
+    activation_fn="silu",
 ) -> nn.Module:
     model_path = os.path.join(models_dir, f"{model_name}_model.pth")
     model = DD_HDG_Trainer(
-        input_dim=input_dim, output_dim=output_dim, hidden_dims=hidden_dims
+        input_dim=input_dim, output_dim=output_dim, hidden_dims=hidden_dims,activation_fn=activation_fn
     )
     state_dict = torch.load(model_path, map_location=device)
     model.load_state_dict(state_dict)
@@ -302,26 +303,32 @@ in_dim = (
 )
 csv_hyperpara_path = "Bases/best_hyperpara8.csv" if USE_HYPERPARAMS_CSV else "Bases/default_hyperpara8.csv"
 # Solution Operators
-arch, _, _, _ = get_hyperparameters(csv_hyperpara_path, "S_internal8")
-S_int = load_model("solution_internal8_hyperpara" if USE_HYPERPARAMS_CSV else "solution_internal8", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=arch)
+arch, _, _, activation_fn = get_hyperparameters(csv_hyperpara_path, "S_internal8")
+S_int = load_model("solution_internal8_hyperpara" if USE_HYPERPARAMS_CSV else "solution_internal8", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=arch, activation_fn=activation_fn)
 
-arch, _, _, _ = get_hyperparameters(csv_hyperpara_path, "S_boundary8")
-S_bnd = load_model("solution_boundary8_hyperpara" if USE_HYPERPARAMS_CSV else "solution_boundary8", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=arch)
+arch, _, _, activation_fn = get_hyperparameters(csv_hyperpara_path, "S_boundary8")
+S_bnd = load_model("solution_boundary8_hyperpara" if USE_HYPERPARAMS_CSV else "solution_boundary8", input_dim=in_dim, output_dim=y_S.shape[1], hidden_dims=arch, activation_fn=activation_fn)
 
 # Directional Flux Operators
 directions = ["bottom", "right", "top", "left"]
 arch_int = {
     d: get_hyperparameters(csv_hyperpara_path, f"F_internal8_{d}")[0] for d in directions
 }
+activation_int = {
+    d: get_hyperparameters(csv_hyperpara_path, f"F_internal8_{d}")[3] for d in directions
+}
 arch_bnd = {
     d: get_hyperparameters(csv_hyperpara_path, f"F_boundary8_{d}")[0] for d in directions
 }
+activation_bnd = {
+    d: get_hyperparameters(csv_hyperpara_path, f"F_boundary8_{d}")[3] for d in directions
+}
 J_int = {
-    d: load_model(f"flux_internal8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_internal8_{d}", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=arch_int[d])
+    d: load_model(f"flux_internal8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_internal8_{d}", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=arch_int[d], activation_fn=activation_int[d])
     for d in directions
 }
 J_bnd = {
-    d: load_model(f"flux_boundary8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_boundary8_{d}", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=arch_bnd[d])
+    d: load_model(f"flux_boundary8_hyperpara_{d}" if USE_HYPERPARAMS_CSV else f"flux_boundary8_{d}", input_dim=in_dim, output_dim=y_J_left.shape[1], hidden_dims=arch_bnd[d], activation_fn=activation_bnd[d])
     for d in directions
 }
 

@@ -51,9 +51,13 @@ import torch
 import matplotlib.pyplot as plt
 
 
-from dd_hdg_training8 import DD_HDG_Trainer
+from dd_hdg_training8 import DD_HDG_Trainer, get_hyperparameters
 from dd_hdg_SVD import reconstruct_from_rom
 USE_HYPERPARAMS_CSV = True  # whether to use hyperparameters from CSV or default ones
+if USE_HYPERPARAMS_CSV:
+    csv_para_path = "Bases/best_hyperpara8.csv"
+else:
+    csv_para_path = "Bases/default_hyperpara8.csv"
 
 # =============================================================================
 # 1. FEATURE / MODEL LOADING HELPERS
@@ -98,7 +102,7 @@ def get_target_cols(df: pd.DataFrame, operator: str, flux_direction: str = None)
     raise ValueError(f"Unknown operator type: {operator}")
 
 
-def build_model_from_state_dict(state_dict):
+def build_model_from_state_dict(state_dict,activation_fn: str = "silu"):
     """Reconstruct a DD_HDG_Trainer with the correct architecture directly
     from a saved state_dict (no need to hard-code hidden_dims)."""
     linear_weight_keys = sorted(
@@ -110,7 +114,9 @@ def build_model_from_state_dict(state_dict):
     out_dim = dims[-1][0]
     hidden_dims = tuple(d[0] for d in dims[:-1])
 
-    model = DD_HDG_Trainer(input_dim=in_dim, output_dim=out_dim, hidden_dims=hidden_dims)
+
+
+    model = DD_HDG_Trainer(input_dim=in_dim, output_dim=out_dim, hidden_dims=hidden_dims, activation_fn=activation_fn)
     model.load_state_dict(state_dict)
     model.to(device)
     model.eval()
@@ -128,7 +134,12 @@ def load_model_and_scalers(model_name: str):
         )
 
     state_dict = torch.load(model_path, map_location=device)
-    model = build_model_from_state_dict(state_dict)
+    if model_name.startswith("solution"):
+        _, _, _, activation_fn = get_hyperparameters(csv_para_path, "S_internal8" if "internal" in model_name else "S_boundary8")
+    else:
+        flux_dir = model_name.split("_")[-1]  # e.g., "bottom", "right", etc.
+        _, _, _, activation_fn = get_hyperparameters(csv_para_path, f"F_internal8_{flux_dir}" if "internal" in model_name else f"F_boundary8_{flux_dir}")
+    model = build_model_from_state_dict(state_dict, activation_fn=activation_fn)
 
     with open(scaler_path, "rb") as f:
         scalers = pickle.load(f)
